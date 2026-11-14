@@ -1,0 +1,13 @@
+{
+  "enabledPlugins": {
+    "superpowers@anthropic-plugin-directory": true,
+    "frontend-design@anthropic-plugin-directory": true,
+    "engineering@anthropic-plugin-directory": true,
+    "feature-dev@anthropic-plugin-directory": true,
+    "product-management@anthropic-plugin-directory": true,
+    "skills-for-real-engineers@anthropic-plugin-directory": true,
+    "caveman@anthropic-plugin-directory": true,
+    "diagrams@anthropic-plugin-directory": true,
+    "mermaidiff@anthropic-plugin-directory": true
+  }
+}

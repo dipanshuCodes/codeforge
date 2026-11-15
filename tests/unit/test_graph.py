@@ -109,7 +109,9 @@ def test_bad_router_output_is_unsupported(env):
 
 
 def test_router_outage_is_cannot_generate(env):
-    final = _submit(_graph(env, {RouterOutput: ModelUnavailableError("429")}))
+    # An unknown task (no Template matches) is never invented during an outage (R5).
+    final = _submit(_graph(env, {RouterOutput: ModelUnavailableError("429")}),
+                    "Write a function that sorts words by length.")
     assert final["outcome"] == "cannot_generate"
 
 

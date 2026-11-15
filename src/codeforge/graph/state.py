@@ -24,6 +24,8 @@ class RunState(TypedDict, total=False):
     approved: bool | None
     execution: dict[str, Any] | None
     attempts: int
+    serving_tier: str | None
+    ticket_id: str | None
     outcome: Outcome | None
     report: str | None
 
@@ -42,6 +44,8 @@ RUN_DEFAULTS: dict[str, Any] = {
     "approved": None,
     "execution": None,
     "attempts": 0,
+    "serving_tier": None,
+    "ticket_id": None,
     "outcome": None,
     "report": None,
 }

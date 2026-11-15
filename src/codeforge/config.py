@@ -20,6 +20,8 @@ ENV_KEYS: tuple[str, ...] = (
     "CODEFORGE_ROLE",
     "CODEFORGE_DB_PATH",
     "CODEFORGE_RUN_QUOTA",
+    "CODEFORGE_CHAOS_RATE",
+    "CODEFORGE_CHAOS_SEED",
     "GROQ_API_KEY",  # read by langchain-groq, never by our code
 )
 # Later files are weaker: values already set (shell, or an earlier file) are kept.
@@ -44,6 +46,8 @@ class Settings(BaseModel):
     sandbox_timeout_s: float = 10.0
     max_output_bytes: int = 10_240
     max_repair_attempts: int = 0
+    chaos_rate: float = 0.0  # share of model calls failed on purpose (R5); 0 = off
+    chaos_seed: int = 0
     run_quota: int = 5  # Requests per User per day (R1 demo User: 5, chaos-run User: 25)
 
 
@@ -63,6 +67,20 @@ def load_settings(env: Mapping[str, str] = os.environ) -> Settings:
         if not quota.isdigit() or int(quota) < 1:
             raise ConfigError("CODEFORGE_RUN_QUOTA must be a positive whole number")
         overrides["run_quota"] = int(quota)
+    rate = env.get("CODEFORGE_CHAOS_RATE", "").strip()
+    if rate:
+        try:
+            value = float(rate)
+        except ValueError:
+            value = -1.0
+        if not 0.0 <= value <= 1.0:
+            raise ConfigError("CODEFORGE_CHAOS_RATE must be a number from 0 to 1")
+        overrides["chaos_rate"] = value
+    seed = env.get("CODEFORGE_CHAOS_SEED", "").strip()
+    if seed:
+        if not seed.isdigit():
+            raise ConfigError("CODEFORGE_CHAOS_SEED must be a whole number")
+        overrides["chaos_seed"] = int(seed)
     return Settings(user_id=user_id, role=role, **overrides)
 
 

@@ -22,9 +22,12 @@ ENV_KEYS: tuple[str, ...] = (
     "CODEFORGE_RUN_QUOTA",
     "CODEFORGE_CHAOS_RATE",
     "CODEFORGE_CHAOS_SEED",
+    "CODEFORGE_PRIMARY_MODEL",
+    "CODEFORGE_SECONDARY_MODEL",
+    "CODEFORGE_FALLBACK_MODEL",
     "GROQ_API_KEY",  # read by langchain-groq, never by our code
     "GOOGLE_API_KEY",  # not read by our code yet: reserved for a possible Gemini model
-    "ANTHROPIC_API_KEY",  # not read by our code yet: reserved for a possible Claude model
+    "ANTHROPIC_API_KEY",  # read by langchain-anthropic, never by our code (we only test presence)
 )
 # Later files are weaker: values already set (shell, or an earlier file) are kept.
 ENV_FILES: tuple[str, ...] = (".env.local", ".env")
@@ -42,8 +45,11 @@ class Settings(BaseModel):
 
     user_id: str
     role: Role
-    large_model: str = "openai/gpt-oss-120b"
-    small_model: str = "openai/gpt-oss-20b"
+    # Model chain, best first: primary → secondary → fallback → template (see llm/factory.py).
+    primary_model: str = "claude-sonnet-5-5"
+    secondary_model: str = "openai/gpt-oss-120b"  # Groq
+    fallback_model: str = "claude-haiku-5-5"
+    small_model: str = "openai/gpt-oss-20b"  # Groq; reserved for the R3 handoff summary
     db_path: str = "codeforge.db"
     sandbox_timeout_s: float = 10.0
     max_output_bytes: int = 10_240
@@ -79,6 +85,11 @@ def load_settings(env: Mapping[str, str] = os.environ) -> Settings:
         if not 0.0 <= value <= 1.0:
             raise ConfigError("CODEFORGE_CHAOS_RATE must be a number from 0 to 1")
         overrides["chaos_rate"] = value
+    for key, field in (("CODEFORGE_PRIMARY_MODEL", "primary_model"),
+                       ("CODEFORGE_SECONDARY_MODEL", "secondary_model"),
+                       ("CODEFORGE_FALLBACK_MODEL", "fallback_model")):
+        if env.get(key, "").strip():
+            overrides[field] = env[key].strip()
     seed = env.get("CODEFORGE_CHAOS_SEED", "").strip()
     if seed:
         if not seed.isdigit():

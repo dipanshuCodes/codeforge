@@ -80,9 +80,9 @@ def main() -> None:
     except ConfigError as exc:
         print(f"Config error: {exc}", file=sys.stderr)
         sys.exit(2)
-    if not os.environ.get("GROQ_API_KEY"):
-        print("Config error: GROQ_API_KEY is not set", file=sys.stderr)
-        sys.exit(2)
+    if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("GROQ_API_KEY")):
+        # Not fatal: tiers without a key are skipped; with none, only Templates can answer.
+        print("Warning: no model API key set; only the template tier can answer.", file=sys.stderr)
     graph = build_graph(settings, build_caller(settings), RunStore(settings),
                         checkpointer=MemorySaver())
     print(DEV_WARNING)

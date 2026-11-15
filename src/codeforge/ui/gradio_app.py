@@ -192,4 +192,6 @@ with gr.Blocks(title="CodeForge") as demo:
 
 
 if __name__ == "__main__":
-    demo.launch(server_name="127.0.0.1", server_port=7860)
+    # No server_port: Gradio reads GRADIO_SERVER_PORT (default 7860), so a student and an
+    # instructor instance can run side by side.
+    demo.launch(server_name="127.0.0.1")

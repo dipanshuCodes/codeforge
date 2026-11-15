@@ -22,6 +22,12 @@ def _continue_or_report(next_node: str) -> Callable[[RunState], str]:
     return route
 
 
+def _after_ingress(state: RunState) -> str:
+    if state.get("duplicate_of"):
+        return END  # the stored Run's report is already in state
+    return "report" if state.get("outcome") else "triage"
+
+
 def _after_policy(state: RunState) -> str:
     verdict = state.get("verdict")
     if verdict == "allow":
@@ -60,7 +66,7 @@ def build_graph(
         g.add_node(name, getattr(nodes, name))
 
     g.add_edge(START, "ingress")
-    g.add_conditional_edges("ingress", _continue_or_report("triage"), ["triage", "report"])
+    g.add_conditional_edges("ingress", _after_ingress, ["triage", "report", END])
     g.add_edge("triage", "escalation")
     g.add_edge("escalation", "router")
     g.add_conditional_edges("router", _continue_or_report("requirements"), ["requirements", "report"])

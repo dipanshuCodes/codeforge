@@ -16,6 +16,12 @@ Outcome = Literal[
     "quota_exceeded",
 ]
 
+# Settled results (CONTEXT.md "Final outcome"). A Duplicate Request reuses only these;
+# cannot_generate (Transient failure) and quota_exceeded are processed again.
+FINAL_OUTCOMES: frozenset[str] = frozenset({
+    "tests_passed", "tests_failed", "timed_out", "denied", "unsupported", "rejected",
+})
+
 _SUMMARY = re.compile(
     r"^=*\s*(\d+ (?:passed|failed|error|errors|skipped|deselected|xfailed|xpassed)\b.*?"
     r"|no tests ran.*?)\s*=*$"

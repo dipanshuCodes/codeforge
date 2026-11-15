@@ -16,8 +16,8 @@ Guiding principle: **the model supplies judgement; code makes the decision.** Mo
 code, requirements, moods and SQL. Plain, unit-tested Python decides what is allowed, who may
 do it, when a human steps in, and whether a build can ship.
 
-Scope source, read in this order (all local only; `reference/` and `plans/` are gitignored):
-1. `plans/problem-statement-alignment.md`: the agreed problem statement and every scope decision.
+Scope source, read in this order (`plans/` is committed; `reference/` is gitignored local material):
+1. `plans/2026-11-15-01-problem-statement-alignment.md`: the agreed problem statement and every scope decision.
 2. `reference/problem-statement.md`: a condensed summary of the hackathon brief, with all pass conditions and the rubric.
 3. `reference/CodeForge_Hackathon_Problem_Statement_Students (1).pdf`: the original brief, the authority when wording is disputed.
 
@@ -55,12 +55,19 @@ Mandatory (from the problem statement): **Level 1, R1, R2, R6**. Chosen levers: 
 | R7 Safe SQL agent (bonus) | Out: no sample database, and it adds a second policy surface |
 
 ### Phasing
-1. ~~Brainstorm~~ Done 2026-11-15; see `plans/problem-statement-alignment.md`.
+1. ~~Brainstorm~~ Done 2026-11-15; see `plans/2026-11-15-01-problem-statement-alignment.md`.
 2. **Level 1 basic orchestration**, as a LangGraph graph with typed state. Every node exists from day one:
    - `ingress` → `triage` → `escalation` → `router` → `requirements` → `codegen` → `testgen` → `policy` → `execute` → `report`.
    - Stubs return safe defaults.
    - `execute` is a real subprocess with a timeout from the start.
    - Routing uses typed fields (`kind`, `verdict`).
+   - L1 decisions (2026-11-15; details in `plans/2026-11-15-02-l1-node-actions.md`):
+     - Runs are stored in SQLite from day one, filtered by the config User.
+     - Each model node makes one structured call. Bad output → "cannot generate now"; bad router output → `other`.
+     - Policy stub: parse failure → `deny`; everything else → `needs_approval`, so `interrupt()` approval exists in L1.
+     - Sandbox in L1: `python -I -m pytest` in a temp dir, 10 s timeout that kills the process group, stripped env (never the Groq key), output cut to 10 KB. The network block, memory cap and Execution key come in R2.
+     - The repair edge exists with `max_repair_attempts = 0`; repair logic comes after R1/R2/R6.
+     - The outcome is set in code from the pytest exit code. Only exit 0 is "tests passed"; exit 5 (no tests) is never a pass.
 3. Mandatory hardening: R1, R2, R6.
 4. R3 and R5, then the Gradio UI, then R4 if time remains.
 
@@ -202,7 +209,9 @@ Lint/format commands: TBD once tooling is chosen.
 
 ## Plans and local material
 
-- All plans go in `plans/` (gitignored). Don't create plan or analysis documents elsewhere.
+- All plans go in `plans/`, which is committed so the whole team can read them. Don't create plan or analysis documents elsewhere.
+- Name plans `YYYY-MM-DD-NN-slug.md` (NN = two-digit order within the day, e.g. `2026-11-15-03-l1-pipeline.md`), so a sorted listing shows the oldest first and the newest last.
+- `plans/TRACKER.md` tracks every phase and item of the hackathon. Update it whenever an item starts or finishes (owner, status, evidence), and link each new plan from its phase.
 - `reference/` (hackathon PDFs) and `sample_agent/` (bootcamp notebook) are gitignored local material.
 - `docs/` is committed and holds `docs/adr/` (decision records) only.
 
@@ -210,18 +219,22 @@ Lint/format commands: TBD once tooling is chosen.
 
 - **Preserve user changes.** Never discard, overwrite or reformat uncommitted work you didn't create. Check `git status` before destructive operations; stash rather than delete.
 - **No secrets.** Never commit keys, `.env` files, or real PII. Read keys from environment variables. Fixtures use obviously fake values.
+- **Config files.**
+  - `.env.example` is committed and lists every setting with safe sample values.
+  - `.env.local` (local runs) and `.env` (deployed) hold real values and are gitignored. Precedence: shell, then `.env.local`, then `.env`.
+  - Adding a setting means adding it to `ENV_KEYS` in `config.py` **and** to `.env.example` in the same change; a unit test enforces this.
+- **Never read `.env` or `.env.local`.** Agents must not open, `cat`, grep or search them, and must exclude them from broad searches (e.g. `grep -r --exclude='.env*'`). To check that a key is set, test for its presence in the environment without printing it.
 - Don't add dependencies, change CI, or push without the user's agreement.
 - If context is missing, make the conservative assumption and mark it `UNRESOLVED` rather than guessing silently.
 
 ## Open decisions
 
 - Lint/format tooling.
-- UNRESOLVED: which Groq models the shared key can access. Check before building the model factory.
 - UNRESOLVED: whether to add the Groq key as a GitHub Actions secret. This enables the soft-case CI job; the user decides.
 - Golden-set contents, the judge-like Request set, and the report template (R6 phase).
 
-Decided 2026-11-15 (full list in `plans/problem-statement-alignment.md`):
-- **Models:** Groq. One large model for every step except the handoff summary; the small model writes the summary and is also the R5 fallback. Model names live in config.
+Decided 2026-11-15 (full list in `plans/2026-11-15-01-problem-statement-alignment.md`):
+- **Models:** Groq. One large model (`openai/gpt-oss-120b`) for every step except the handoff summary; the small model (`openai/gpt-oss-20b`) writes the summary and is also the R5 fallback. Model names live in config.
 - **Sandbox:** separate process, `python -I`, stripped environment, temp directory, and a network block in Python (audit hook) behind the policy gate. Limits: 10 s timeout (kills the process group), 256 MB memory, first 10 KB of output.
 - **Storage:** a SQLite run store (built-in `sqlite3`) for Runs, keys, quota, Tickets and Feedback. The LangGraph checkpointer stays in memory.
 - **CI:** hard Golden cases run on every push with a fake model. Soft cases run in a separate job, only when the key secret exists.

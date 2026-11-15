@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codeforge"
+version = "0.1.0"
+description = "Natural-language-to-code with honest, sandboxed test results."
+requires-python = ">=3.11"
+dependencies = [
+    "langgraph",
+    "langchain-core",
+    "langchain-groq",
+    "pydantic>=2",
+    "pytest",  # the sandbox runs `python -m pytest`
+]
+
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["llm: needs GROQ_API_KEY and network"]

@@ -1,0 +1,101 @@
+"""SQLite run store. Every query is scoped to the config User; no method takes a user.
+
+"Missing" and "belongs to someone else" are indistinguishable (both return None).
+"""
+
+from __future__ import annotations
+
+import json
+import sqlite3
+from contextlib import closing
+
+from pydantic import BaseModel
+
+from codeforge.config import Settings
+from codeforge.reporting.outcome import Outcome
+
+_FIELDS = (
+    "run_id", "conversation_id", "created_at", "request", "kind", "outcome", "verdict",
+    "reasons", "approved", "code", "tests", "exit_code", "timed_out", "output",
+    "serving_tier", "report",
+)
+
+_SCHEMA = f"""
+CREATE TABLE IF NOT EXISTS runs (
+    run_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    {", ".join(f"{f} TEXT" if f not in ("approved", "exit_code", "timed_out") else f"{f} INTEGER"
+               for f in _FIELDS[1:])}
+)
+"""
+
+
+class RunRecord(BaseModel):
+    """One Run. Deliberately has no user field: the store adds it from config."""
+
+    run_id: str
+    conversation_id: str
+    created_at: str
+    request: str
+    kind: str | None = None
+    outcome: Outcome | None = None
+    verdict: str | None = None
+    reasons: list[str] = []
+    approved: bool | None = None
+    code: str | None = None
+    tests: str | None = None
+    exit_code: int | None = None
+    timed_out: bool = False
+    output: str | None = None
+    serving_tier: str | None = None
+    report: str | None = None
+
+
+class RunStore:
+    def __init__(self, settings: Settings) -> None:
+        self._user_id = settings.user_id
+        self._db_path = settings.db_path
+        with closing(self._connect()) as conn, conn:
+            conn.execute(_SCHEMA)
+
+    def _connect(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self._db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def save(self, record: RunRecord) -> None:
+        """Insert or update a Run owned by the config User. Never touches another user's Run."""
+        values = record.model_dump()
+        values["reasons"] = json.dumps(values["reasons"])
+        cols = ("user_id",) + _FIELDS
+        params = [self._user_id] + [values[f] for f in _FIELDS]
+        updates = ", ".join(f"{f} = excluded.{f}" for f in _FIELDS[1:])
+        sql = (
+            f"INSERT INTO runs ({', '.join(cols)}) VALUES ({', '.join('?' for _ in cols)}) "
+            f"ON CONFLICT(run_id) DO UPDATE SET {updates} WHERE runs.user_id = excluded.user_id"
+        )
+        with closing(self._connect()) as conn, conn:
+            conn.execute(sql, params)
+
+    def get(self, run_id: str) -> RunRecord | None:
+        with closing(self._connect()) as conn:
+            row = conn.execute(
+                "SELECT * FROM runs WHERE run_id = ? AND user_id = ?", (run_id, self._user_id)
+            ).fetchone()
+        return _to_record(row) if row else None
+
+    def list_mine(self) -> list[RunRecord]:
+        with closing(self._connect()) as conn:
+            rows = conn.execute(
+                "SELECT * FROM runs WHERE user_id = ? ORDER BY created_at DESC", (self._user_id,)
+            ).fetchall()
+        return [_to_record(r) for r in rows]
+
+
+def _to_record(row: sqlite3.Row) -> RunRecord:
+    data = {f: row[f] for f in _FIELDS}
+    data["reasons"] = json.loads(data["reasons"] or "[]")
+    data["timed_out"] = bool(data["timed_out"])
+    if data["approved"] is not None:
+        data["approved"] = bool(data["approved"])
+    return RunRecord(**data)

@@ -12,7 +12,10 @@ from codeforge.sandbox.runner import run_pytest
 REQUEST = "Write a Python function that checks if a string is a palindrome."
 REQ = Requirements(function_name="is_palindrome", description="Palindrome check.",
                    params=[Param(name="s", type="str")], returns="bool", edge_cases=["empty"])
-CODE = "def is_palindrome(s):\n    return s == s[::-1]\n"
+PURE_CODE = "def is_palindrome(s):\n    return s == s[::-1]\n"
+# File access makes the policy ask for approval, so the approval path can be exercised.
+FILE_HELPER = "\n\ndef save(path, text):\n    with open(path, 'w') as f:\n        f.write(text)\n"
+CODE = PURE_CODE + FILE_HELPER
 TESTS = (
     "from solution import is_palindrome\n\n"
     "def test_yes():\n    assert is_palindrome('aba')\n\n"
@@ -69,6 +72,23 @@ def test_palindrome_happy_path(env):
     assert "TESTS PASSED" in final["report"]
     assert store.get(final["run_id"]).outcome == "tests_passed"
     assert spy.calls == 1
+
+
+def test_pure_code_is_allowed_and_runs_without_approval(env):
+    _, store, _, spy = env
+    final = _submit(_graph(env, {CodeOutput: CodeOutput(code=PURE_CODE)}))
+    assert "__interrupt__" not in final
+    assert final["verdict"] == "allow" and final["approved"] is None
+    assert final["outcome"] == "tests_passed"
+    assert spy.calls == 1
+
+
+def test_denied_code_runs_nothing(env):
+    code = "import os\n\ndef is_palindrome(s):\n    os.system('rm -rf ~')\n    return True\n"
+    final = _submit(_graph(env, {CodeOutput: CodeOutput(code=code)}))
+    assert "__interrupt__" not in final
+    assert final["outcome"] == "denied" and "DENIED" in final["report"]
+    assert env[3].calls == 0
 
 
 def test_reject_runs_nothing(env):
@@ -134,7 +154,7 @@ def test_missing_function_name_cannot_generate(env):
 
 
 def test_failing_tests_no_repair_in_l1(env):
-    g = _graph(env, {CodeOutput: CodeOutput(code="def is_palindrome(s):\n    return False\n")})
+    g = _graph(env, {CodeOutput: CodeOutput(code="def is_palindrome(s):\n    return False\n" + FILE_HELPER)})
     _submit(g)
     final = g.invoke(Command(resume="approve"), CFG)
     assert final["outcome"] == "tests_failed"
@@ -155,7 +175,7 @@ def test_second_request_same_thread_starts_clean(env):
     _submit(g1)
     first = g1.invoke(Command(resume="reject"), CFG)
 
-    code2 = "def is_palindrome(s):\n    return s.lower() == s.lower()[::-1]\n"
+    code2 = "def is_palindrome(s):\n    return s.lower() == s.lower()[::-1]\n" + FILE_HELPER
     g2 = _graph(env, {CodeOutput: CodeOutput(code=code2)})
     second = _submit(g2, "Make it case-insensitive.")
     payload = second["__interrupt__"][0].value

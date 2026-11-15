@@ -15,7 +15,8 @@ _CARD = re.compile(r"(?<![\d-])\d(?:[ -]?\d){12,18}(?![\d-])")
 # No checksum on purpose: any 12-digit number starting 2–9 is masked (fails closed).
 # Not right after "+", so "+91" plus a 10-digit phone stays a [PHONE].
 _AADHAAR = re.compile(r"(?<![\d+])[2-9]\d{3}[ -]?\d{4}[ -]?\d{4}(?!\d)")
-_PHONE = re.compile(r"(?<![\d+])(?:\+91[ -]?|0)?[6-9]\d{9}(?!\d)")
+# Also the common 5-5 grouping ("98765 43210").
+_PHONE = re.compile(r"(?<![\d+])(?:\+91[ -]?|0)?[6-9]\d{4}[ -]?\d{5}(?!\d)")
 
 
 def luhn_valid(digits: str) -> bool:

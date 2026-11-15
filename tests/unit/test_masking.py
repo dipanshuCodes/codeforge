@@ -39,7 +39,8 @@ def test_twelve_digits_starting_0_or_1_are_not_aadhaar():
     assert mask("n 123456789012") == "n 123456789012"
 
 
-@pytest.mark.parametrize("phone", ["9876543210", "+919876543210", "+91 9876543210", "09876543210"])
+@pytest.mark.parametrize("phone", ["9876543210", "+919876543210", "+91 9876543210", "09876543210",
+                                   "+91 98765 43210", "98765-43210"])
 def test_phone(phone):
     assert mask(f"call {phone} pls") == "call [PHONE] pls"
 
@@ -50,6 +51,8 @@ def test_phone(phone):
     "2024",
     "fibonacci(30)",
     "return sum([1, 2, 3])",
+    "The expected output is 123456.",
+    "The array is `[1234, 5678, 9012]`.",  # comma-separated data, not one number
 ])
 def test_must_not_mask(text):
     assert mask(text) == text

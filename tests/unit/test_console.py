@@ -9,7 +9,9 @@ from codeforge.ui.console import run_console
 
 REQ = Requirements(function_name="is_palindrome", description="Palindrome check.",
                    params=[Param(name="s", type="str")], returns="bool", edge_cases=[])
-CODE = "def is_palindrome(s):\n    return s == s[::-1]\n"
+# Reads a file, so the policy asks for approval and the console shows the prompt.
+CODE = ("def is_palindrome(s):\n    return s == s[::-1]\n\n\n"
+        "def load(path):\n    with open(path) as f:\n        return f.read()\n")
 TESTS = "from solution import is_palindrome\n\ndef test_yes():\n    assert is_palindrome('aba')\n"
 
 

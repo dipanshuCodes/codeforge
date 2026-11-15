@@ -25,6 +25,7 @@ from codeforge.policy.templates import pick_template
 from codeforge.privacy.masking import mask
 from codeforge.reporting.outcome import outcome_from_execution
 from codeforge.reporting.report import ReportInput, render_report
+from codeforge.runs.keys import execution_key, request_key
 from codeforge.runs.store import RunRecord, RunStore
 from codeforge.sandbox.runner import ExecutionResult
 
@@ -55,14 +56,25 @@ class Nodes:
         # Counted before this Run is saved, so `used` is the Requests already submitted today.
         used = self.store.count_since(quota_window_start(now).isoformat(), NOT_COUNTED)
         allowed = quota_allows(used, self.settings.run_quota)
-        self.store.save(RunRecord(run_id=run_id, conversation_id=conversation_id,
-                                  created_at=created_at, request=request,
-                                  outcome=None if allowed else "quota_exceeded"))
+        key = request_key(self.settings.user_id, request)
         # raw_text is overwritten with the masked text so the unmasked form isn't checkpointed.
         update = {**RUN_DEFAULTS, "raw_text": request, "request": request, "run_id": run_id,
-                  "conversation_id": conversation_id, "created_at": created_at}
+                  "conversation_id": conversation_id, "created_at": created_at,
+                  "request_key": key}
         if not allowed:
             update["outcome"] = "quota_exceeded"
+        elif (earlier := self.store.find_final_run(key)) is not None:
+            # Duplicate Request: answer with the stored Run; nothing is generated or run.
+            report = (f"Duplicate Request: same as Run {earlier.run_id[:6]}; not run again.\n"
+                      + (earlier.report or ""))
+            self.store.save(earlier.model_copy(update={
+                "run_id": run_id, "conversation_id": conversation_id, "created_at": created_at,
+                "duplicate_of": earlier.run_id, "report": report}))
+            return {**update, "outcome": earlier.outcome, "report": report,
+                    "duplicate_of": earlier.run_id}
+        self.store.save(RunRecord(run_id=run_id, conversation_id=conversation_id,
+                                  created_at=created_at, request=request, request_key=key,
+                                  outcome=update.get("outcome")))
         return update
 
     def triage(self, state: RunState) -> dict[str, Any]:
@@ -172,12 +184,19 @@ class Nodes:
         return {"approved": True}
 
     def execute(self, state: RunState) -> dict[str, Any]:
-        result = self.run_tests(
-            state["code"], state["tests"],
-            timeout_s=self.settings.sandbox_timeout_s,
-            max_output_bytes=self.settings.max_output_bytes,
-        )
-        return {"execution": result.model_dump(), "attempts": state.get("attempts", 0) + 1}
+        key = execution_key(self.settings.user_id, state["code"], state["tests"])
+        execution = self.store.get_execution(key)
+        if execution is not None:
+            execution["reused"] = True  # same code + tests ran before: not run again
+        else:
+            execution = self.run_tests(
+                state["code"], state["tests"],
+                timeout_s=self.settings.sandbox_timeout_s,
+                max_output_bytes=self.settings.max_output_bytes,
+                memory_limit_bytes=self.settings.sandbox_memory_bytes,
+            ).model_dump()
+            self.store.save_execution(key, execution)
+        return {"execution": execution, "attempts": state.get("attempts", 0) + 1}
 
     # --- report --------------------------------------------------------------------------
 
@@ -199,6 +218,7 @@ class Nodes:
             exit_code=execution.get("exit_code"), timeout_s=self.settings.sandbox_timeout_s,
             output=execution.get("output"), run_quota=self.settings.run_quota,
             ticket_id=state.get("ticket_id"),
+            execution_reused=bool(execution.get("reused")),
         ))
         self.store.save(RunRecord(
             run_id=state["run_id"], conversation_id=state["conversation_id"],
@@ -207,5 +227,6 @@ class Nodes:
             approved=state.get("approved"), code=state.get("code"), tests=state.get("tests"),
             exit_code=execution.get("exit_code"), timed_out=bool(execution.get("timed_out")),
             output=execution.get("output"), serving_tier=tier, report=report,
+            request_key=state.get("request_key"),
         ))
         return {"outcome": outcome, "report": report}

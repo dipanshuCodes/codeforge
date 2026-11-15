@@ -28,6 +28,8 @@ class RunState(TypedDict, total=False):
     ticket_id: str | None
     outcome: Outcome | None
     report: str | None
+    request_key: str
+    duplicate_of: str | None
 
 
 # Every per-Run field and its fresh value. Ingress returns these so a new Request on the same
@@ -48,4 +50,5 @@ RUN_DEFAULTS: dict[str, Any] = {
     "ticket_id": None,
     "outcome": None,
     "report": None,
+    "duplicate_of": None,
 }

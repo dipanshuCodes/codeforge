@@ -11,6 +11,7 @@ def test_loads_identity_from_env():
     assert s.small_model == "openai/gpt-oss-20b"
     assert s.sandbox_timeout_s == 10.0
     assert s.max_output_bytes == 10_240
+    assert s.sandbox_memory_bytes == 256 * 1024 * 1024
     assert s.max_repair_attempts == 0
 
 

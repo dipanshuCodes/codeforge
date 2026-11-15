@@ -48,7 +48,9 @@ flowchart TD
     quota -.-> reqkey -.-> triage
     escalation -- "P1: no generation" --> ticket --> report
     escalation -- "P2 / P3: Ticket, continue" --> router
-    router -- "sql_query / other" --> report
+    router -- "other" --> report
+    sqlnode["<b>sql</b> · model + SQLite authorizer · R7<br/>role tables, 1 SELECT, 100-row clamp<br/>in-memory sample DB"]:::built
+    router -- sql_query --> sqlnode --> report
     router -- python_function --> requirements --> codegen --> testgen --> policy
     requirements & codegen & testgen -- "bad output → cannot_generate" --> report
     codegen -.- resilience
@@ -101,7 +103,7 @@ offline unit tests only; nothing here is checked live against Groq yet.
 
 **router**
 - [x] `python_function` goes on to requirements
-- [x] `sql_query` → "not supported" report, no code
+- [x] `sql_query` → "not supported" report, no code (superseded by R7 on 2026-11-15)
 - [x] Bad router output → `other` → "not supported"
 - [x] Model outage → "cannot generate now"
 
@@ -176,7 +178,7 @@ offline unit tests only; nothing here is checked live against Groq yet.
 >>>>>>> 393016f (docs: update Gradio UI tracker status)
 | 4d | R4 Cost and latency (only if time remains) | — | todo | issue [#11](https://github.com/dipanshuCodes/codeforge/issues/11) |
 | 5 | Deliverables and presentation | Neha + all | todo | issue [#12](https://github.com/dipanshuCodes/codeforge/issues/12) |
-| — | R7 Safe SQL agent | — | dropped (out of scope) | — |
+| — | R7 Safe SQL agent | Siyahul | done (reopened 2026-11-15) | `tests/unit/test_sql_policy.py`, `test_graph.py::test_sql_*`, golden `H-SQL-01..14` (5 own attacks); instructor-only |
 
 Order: 2 → 3a/3b/3c → 3d → 4a/4b → 4c → 4d. Don't start a later phase while Level 1 or the gate is red.
 

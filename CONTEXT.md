@@ -131,4 +131,10 @@ The Router's classification of a Request: `python_function`, `sql_query` or `oth
 
 **Unsupported Request**:
 A Request whose kind CodeForge does not serve. It gets an honest "not supported" report and no
-code. For now this covers `other` and `sql_query`.
+code. For now this covers `other`.
+
+**Sample database**:
+The fake, in-memory SQLite database that `sql_query` Requests run against (R7), rebuilt for
+every query. Only the instructor role may use it (the brief); instructors read products, sales,
+archived_sales, employees and departments; `users` is never readable. One SELECT, at most 100 rows.
+_Avoid_: production database, real data

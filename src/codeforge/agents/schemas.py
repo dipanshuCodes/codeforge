@@ -34,6 +34,10 @@ class TestsOutput(BaseModel):
     tests: str = Field(description="The complete pytest module source")
 
 
+class SqlOutput(BaseModel):
+    sql: str = Field(description="One SQLite SELECT query")
+
+
 class RepairOutput(BaseModel):
     """Repair attempt 2: the agent may return changed tests as well as changed code."""
 

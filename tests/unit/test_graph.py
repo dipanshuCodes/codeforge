@@ -2,7 +2,9 @@ import pytest
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
 
-from codeforge.agents.schemas import CodeOutput, Param, Requirements, RouterOutput, TestsOutput
+from codeforge.agents.schemas import (
+    CodeOutput, Param, Requirements, RouterOutput, SqlOutput, TestsOutput,
+)
 from codeforge.config import Settings
 from codeforge.graph.build import build_graph
 from codeforge.llm.caller import FakeCaller, ModelOutputError, ModelUnavailableError
@@ -136,10 +138,44 @@ def test_router_outage_is_cannot_generate(env):
     assert final["outcome"] == "cannot_generate"
 
 
-def test_sql_kind_is_unsupported(env):
-    final = _submit(_graph(env, {RouterOutput: RouterOutput(kind="sql_query")}))
-    assert final["outcome"] == "unsupported"
-    assert "NOT SUPPORTED" in final["report"]
+def _sql(env, sql):
+    return _graph(env, {RouterOutput: RouterOutput(kind="sql_query"), SqlOutput: SqlOutput(sql=sql)})
+
+
+def _instructor(env):
+    settings, store, saver, spy = env
+    return settings.model_copy(update={"role": "instructor"}), store, saver, spy
+
+
+def test_sql_query_runs_read_only_without_approval(env):
+    _, store, _, spy = env
+    final = _submit(_sql(_instructor(env), "SELECT name FROM products ORDER BY id LIMIT 2"),
+                    "Show two products.")
+    assert "__interrupt__" not in final
+    assert final["outcome"] == "query_ran"
+    assert final["kind"] == "sql_query" and final["verdict"] == "allow"
+    assert "QUERY RAN" in final["report"] and "2 rows" in final["report"]
+    assert "Notebook" in final["report"]
+    assert store.get(final["run_id"]).outcome == "query_ran"
+    assert spy.calls == 0  # SQL never touches the Python sandbox
+
+
+def test_sql_protected_table_is_denied(env):
+    final = _submit(_sql(_instructor(env), "SELECT * FROM users"), "Show all records from the users table.")
+    assert final["outcome"] == "denied" and final["denials"] == 1
+    assert "DENIED" in final["report"] and "users" in final["report"]
+
+
+def test_sql_agent_denied_for_student_without_a_model_call(env):
+    final = _submit(_sql(env, "SELECT * FROM products"), "Show products.")
+    assert final["outcome"] == "denied" and "instructors only" in final["report"]
+    assert final.get("code") is None
+
+
+def test_sql_model_outage_is_cannot_generate_with_ticket(env):
+    final = _submit(_graph(_instructor(env), {RouterOutput: RouterOutput(kind="sql_query"),
+                                 SqlOutput: ModelUnavailableError("503")}), "Top products.")
+    assert final["outcome"] == "cannot_generate" and final["ticket_id"]
 
 
 def test_codegen_error_cannot_generate(env):

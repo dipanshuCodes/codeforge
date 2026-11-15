@@ -40,7 +40,7 @@ It is 11:47 PM, ten minutes before a deadline:
 | R5 Resilience (chosen lever) | Built |
 | Gradio chat UI (bonus) | Built |
 | R4 Cost and latency | Not built |
-| R7 Safe SQL agent (bonus) | Not built (out of scope); SQL Requests get an honest "not supported" |
+| R7 Safe SQL agent (bonus) | Built: instructor role only; read-only SELECTs on a fake in-memory sample database, checked by SQLite's authorizer (`validate_sql`) |
 
 ## How a Request flows
 
@@ -53,7 +53,10 @@ flowchart TD
     T -- "no generation" --> P
     D -- "P2 / P3: Ticket, then continue" --> E
     D -- none --> E{Router}
-    E -- sql / other --> U[Not supported]
+    E -- other --> U[Not supported]
+    E -- sql --> Q[SQL agent → SQL policy:<br/>role tables, one SELECT, 100-row clamp]
+    Q -- deny --> R
+    Q -- allow --> QR[Run on in-memory sample DB] --> P
     E -- python --> F[Requirements → Code → Tests]
     F --> G{Policy gate}
     G -- deny --> R[Refuse and log;<br/>2nd denial in a Conversation → P3 Ticket]
@@ -227,8 +230,9 @@ What to keep in mind:
   cannot.
 - **Section 3:** the 10-billion-element list is stopped by the 256 MB memory cap on Linux. macOS
   can't enforce that cap, so there the 10-second timeout or a `MemoryError` stops it.
-- **Section 10 (SQL agent, R7)** was not built. Every SQL Request is answered "not supported",
-  with no code.
+- **Section 10 (SQL agent, R7):** run the console with `CODEFORGE_ROLE=instructor`. As a
+  student, every SQL Request is `DENIED` (the agent is instructor-only). A natural-language
+  request may be rewritten by the model; type the SQL itself to hit a specific policy rule.
 - **Masking (section 4):** the console's first line, `You (masked): …`, shows exactly what the
   models see.
 - **Repeats:** a Request you already submitted returns the stored Run (`Duplicate Request: …
@@ -466,16 +470,32 @@ python -m pytest tests/test_reference_tests.py -v   # live part needs a key
    fails until the bug is fixed.
 4. Fix the code, rerun the gate, and it goes **green**.
 
-### R7: Safe SQL agent (not built)
+### R7: Safe SQL agent
 
-R7 was out of scope: the brief provides no sample database, and it would add a second policy
-surface. The Router still recognises SQL Requests and answers them honestly with "not
-supported" and no code:
+Instructor role only (from config). The SQL agent writes one query; `validate_sql`
+(`policy/sql_policy.py`) compiles it, never runs it, against the sample schema behind SQLite's
+authorizer. It allows a single SELECT (CTE and UNION included) on `products`, `sales`,
+`archived_sales`, `employees` and `departments` with allow-listed functions. It denies writes, DDL,
+`ATTACH`, `PRAGMA` (also `pragma_*` table functions), `sqlite_master` and the `users` table. Allowed
+queries run on a fresh, fake, in-memory sample database (no sample database was provided) with
+`query_only`, the same authorizer, a work budget and an outer `LIMIT 100`, so `LIMIT 10000000` is
+clamped. Read-only, so there is no approval pause. A denial counts towards escalation like a code
+denial.
+
+```bash
+CODEFORGE_ROLE=instructor CODEFORGE_RUN_QUOTA=50 python -m codeforge
+```
 
 ```text
 Request> Show the top five products by total sales.
-...      NOT SUPPORTED   (no code generated)
+...      QUERY RAN (read-only, sample database)   5 rows
+Request> SELECT * FROM users
+...      DENIED   table `users` is not readable for role instructor
 ```
+
+As a student, the same requests answer `DENIED: the SQL agent is for instructors only`.
+`sqlglot` was not added (no new dependency): SQLite's own compiler sees every table and function,
+including inside CTEs and subqueries. Tests: `tests/unit/test_sql_policy.py`, golden `H-SQL-01..14`.
 
 ---
 

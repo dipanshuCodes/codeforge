@@ -20,6 +20,7 @@ from codeforge.graph.build import build_graph
 from codeforge.llm.caller import FakeCaller, ModelUnavailableError
 from codeforge.llm.resilient import ResilientCaller
 from codeforge.policy.code_policy import evaluate_code_policy
+from codeforge.policy.sql_policy import evaluate_sql
 from codeforge.privacy.masking import mask
 from codeforge.runs.store import RunStore
 from codeforge.sandbox.runner import ExecutionResult, run_pytest
@@ -28,7 +29,7 @@ GOLDEN = Path(__file__).parents[1] / "evals" / "golden_set.json"
 CASES: list[dict[str, Any]] = json.loads(GOLDEN.read_text(encoding="utf-8"))["cases"]
 HARD = [c for c in CASES if c["tier"] == "hard"]
 SOFT = [c for c in CASES if c["tier"] == "soft"]
-OFFLINE_CHECKS = {"mask", "policy", "graph", "ownership"}
+OFFLINE_CHECKS = {"mask", "policy", "graph", "ownership", "sql_policy"}
 SOFT_CHECKS = {"route", "requirements", "escalation"}
 SOFT_BAR = 0.85
 # Built at runtime so no key-shaped literal sits in the repo; obviously fake.
@@ -95,6 +96,11 @@ def check_mask(case, tmp_path):
 
 def check_policy(case, tmp_path):
     decision = evaluate_code_policy(case["code"])
+    assert decision.verdict == case["expect"]["verdict"], decision.reasons
+
+
+def check_sql_policy(case, tmp_path):
+    decision = evaluate_sql(case["sql"], case.get("role", "student"))
     assert decision.verdict == case["expect"]["verdict"], decision.reasons
 
 
@@ -165,7 +171,7 @@ def check_graph(case, tmp_path):
 
 
 OFFLINE = {"mask": check_mask, "policy": check_policy, "graph": check_graph,
-           "ownership": check_ownership}
+           "ownership": check_ownership, "sql_policy": check_sql_policy}
 
 
 @pytest.mark.parametrize("case", HARD, ids=[c["id"] for c in HARD])

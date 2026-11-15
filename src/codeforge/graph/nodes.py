@@ -15,6 +15,7 @@ from codeforge.agents.repair import repair_code, repair_code_and_tests
 from codeforge.agents.handoff import summarize_handoff
 from codeforge.agents.requirements import extract_requirements
 from codeforge.agents.router import classify
+from codeforge.agents.sqlgen import generate_sql
 from codeforge.agents.schemas import Requirements, TriageOutput
 from codeforge.agents.testgen import generate_tests
 from codeforge.agents.triage import triage as triage_request
@@ -28,6 +29,7 @@ from codeforge.policy.code_policy import defines_function, evaluate_code_policy,
 from codeforge.policy.repair import evaluate_repair
 from codeforge.policy.quota import NOT_COUNTED, quota_allows, quota_window_start
 from codeforge.policy.resilience import degrade_verdict, worst_tier
+from codeforge.policy.sql_policy import evaluate_sql, sql_allowed
 from codeforge.policy.templates import pick_template
 from codeforge.privacy.masking import mask
 from codeforge.reporting.handoff import HandoffNote, last_failing_test
@@ -36,6 +38,7 @@ from codeforge.reporting.report import ReportInput, render_report
 from codeforge.runs.keys import execution_key, request_key
 from codeforge.runs.store import RunRecord, RunStore
 from codeforge.sandbox.runner import ExecutionResult
+from codeforge.sandbox.sql_runner import format_result, run_sql
 
 APPROVE_WORD = "approve"
 # Triage unavailable: assume calm so the Run is not blocked (R5 still tickets an outage).
@@ -174,9 +177,37 @@ class Nodes:
             return self._outage(state)
         except ModelCallError:
             return {"outcome": "cannot_generate"}
-        if kind != "python_function":
+        if kind not in ("python_function", "sql_query"):
             return {"kind": kind, "outcome": "unsupported", "serving_tier": self._tier(state)}
         return {"kind": kind, "serving_tier": self._tier(state)}
+
+    def sql(self, state: RunState) -> dict[str, Any]:
+        """R7: the model writes one SELECT; `evaluate_sql` decides; an allowed query runs on a
+        fresh in-memory sample database. Read-only and authorizer-bound, so no approval pause,
+        on any Serving tier."""
+        role = self.settings.role  # from config, never from the Request
+        if not sql_allowed(role):
+            decision = evaluate_sql("", role)  # no model call for a role that may not query
+            return {"verdict": "deny", "reasons": decision.reasons, "outcome": "denied"}
+        try:
+            query = generate_sql(self.caller, state["request"]).sql
+        except ModelUnavailableError:
+            ticket_id = self.store.add_ticket(state["run_id"], "model outage, SQL Request",
+                                              "template", state["request"])
+            return {"outcome": "cannot_generate", "serving_tier": "template",
+                    "ticket_id": ticket_id, "ticket_priority": None, "ticket_sla_hours": None}
+        except ModelCallError:
+            return {"outcome": "cannot_generate"}
+        decision = evaluate_sql(query, role)
+        update: dict[str, Any] = {"code": query, "verdict": decision.verdict,
+                                  "reasons": decision.reasons, "serving_tier": self._tier(state)}
+        if decision.verdict != "allow":
+            return {**update, "outcome": "denied"}
+        result = run_sql(query, role)
+        if result.error:
+            return {**update, "outcome": "query_failed", "execution": {"output": result.error}}
+        return {**update, "outcome": "query_ran",
+                "execution": {"output": format_result(result, self.settings.max_output_bytes)}}
 
     def requirements(self, state: RunState) -> dict[str, Any]:
         if state.get("serving_tier") == "template":

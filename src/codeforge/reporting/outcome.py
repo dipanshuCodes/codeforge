@@ -15,12 +15,15 @@ Outcome = Literal[
     "cannot_generate",
     "quota_exceeded",
     "escalated",  # P1 Escalation (R3): handed to a human, nothing generated
+    "query_ran",  # R7: an allowed SELECT ran on the sample database
+    "query_failed",  # R7: allowed, but SQLite stopped it (error or work budget)
 ]
 
 # Settled results (CONTEXT.md "Final outcome"). A Duplicate Request reuses only these;
 # cannot_generate (Transient failure) and quota_exceeded are processed again.
 FINAL_OUTCOMES: frozenset[str] = frozenset({
     "tests_passed", "tests_failed", "timed_out", "denied", "unsupported", "rejected", "escalated",
+    "query_ran", "query_failed",
 })
 
 _SUMMARY = re.compile(

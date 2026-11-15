@@ -6,7 +6,7 @@ All shared rules, architecture, security invariants and definition of done are i
 (imported above). This file only adds Claude Code-specific operating notes.
 
 ## Before starting work
-- Check the Scope table in `AGENTS.md`. If a task touches an UNDECIDED item (R3/R4/R5/R7, UI), ask before building.
+- Check the Scope table in `AGENTS.md`. If a task touches an item marked Good to have or Out (R4, R7), ask before building.
 - Read `CONTEXT.md` and relevant ADRs if they exist; use their vocabulary.
 - Follow the phasing. Don't start a later phase while Level 1 or the gate is red.
 

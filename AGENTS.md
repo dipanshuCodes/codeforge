@@ -16,21 +16,31 @@ Guiding principle: **the model supplies judgement; code makes the decision.** Mo
 code, requirements, moods and SQL. Plain, unit-tested Python decides what is allowed, who may
 do it, when a human steps in, and whether a build can ship.
 
-Scope source: the hackathon problem statement (`reference/CodeForge_Hackathon_Problem_Statement_Students (1).pdf`, local only, `reference/` is gitignored).
+Scope source, read in this order (all local only; `reference/` and `plans/` are gitignored):
+1. `plans/problem-statement-alignment.md`: the agreed problem statement and every scope decision.
+2. `reference/problem-statement.md`: a condensed summary of the hackathon brief, with all pass conditions and the rubric.
+3. `reference/CodeForge_Hackathon_Problem_Statement_Students (1).pdf`: the original brief, the authority when wording is disputed.
+
+Domain vocabulary (Request, Run, Execution, Conversation, Serving tier and others) is defined in `CONTEXT.md`. Use those terms in code, tests and docs.
+
+**Deadline:** submission on 2026-11-15 at 3:30 PM IST.
+
+**Team (3 people; the brief assumes 4):**
+- **Dipanshu:** graph design and the Level 1 pipeline.
+- **Siyahul:** evals and policies (R1, R2, R6), then R3 and R5.
+- **Neha:** Gradio UI and the presentation.
 
 ### Non-goals
 - A general-purpose IDE, multi-file project generation, or long-running services.
 - Executing generated code outside the sandbox, or with network access.
-- Languages beyond Python (and SQL if R7 is taken) unless a request clearly asks for one.
+- Languages beyond Python. `sql_query` and `other` Requests get an honest "not supported" report and no code.
 - Model-decided policy, escalation, quotas or ship/no-ship verdicts.
 - Production auth/user management: identity comes from config.
 
 ## Scope and priorities
 
-Mandatory (from the problem statement): **Level 1, R1, R2, R6**.
-
-Everything else is **UNDECIDED** and will be prioritised in a brainstorm before any work starts.
-Do not build or scaffold any of it until it is recorded in this table.
+Mandatory (from the problem statement): **Level 1, R1, R2, R6**. Chosen levers: **R3, R5**
+(decided 2026-11-15). Do not build anything not marked Must or Should in this table.
 
 | Item | Status |
 |---|---|
@@ -38,18 +48,21 @@ Do not build or scaffold any of it until it is recorded in this table.
 | R1 Identity & privacy | Must have |
 | R2 Safe execution | Must have |
 | R6 Evals as a gate | Must have |
-| R3 Escalation & handoff | UNDECIDED (choose ≥2 of R3-R5 per the statement) |
-| R4 Cost & latency | UNDECIDED |
-| R5 Resilience | UNDECIDED |
-| R7 Safe SQL agent (bonus) | UNDECIDED |
-| Chat UI (bonus) | UNDECIDED, framework not chosen |
-| Team ideas / extra features | To be collected in brainstorm, then tiered Should have / Good to have |
+| R3 Escalation & handoff | Must have (chosen lever) |
+| R5 Resilience | Must have (chosen lever) |
+| Chat UI (bonus) | Should have: Gradio, owned by Neha, a thin adapter; drop it if it isn't working by 1:30 PM IST |
+| R4 Cost & latency | Good to have, only if time remains. Model names in config keep the door open |
+| R7 Safe SQL agent (bonus) | Out: no sample database, and it adds a second policy surface |
 
 ### Phasing
-1. **Brainstorm** the problem statement; tier every feature as must / should / good-to-have.
-2. **Level 1 basic orchestration**: Router → Requirements → Code → Test → run tests → report, as a LangGraph graph with typed state. Keep it simple, but keep the seams where R1/R2 will plug in (ingress step, policy gate step, sandboxed run step).
+1. ~~Brainstorm~~ Done 2026-11-15; see `plans/problem-statement-alignment.md`.
+2. **Level 1 basic orchestration**, as a LangGraph graph with typed state. Every node exists from day one:
+   - `ingress` → `triage` → `escalation` → `router` → `requirements` → `codegen` → `testgen` → `policy` → `execute` → `report`.
+   - Stubs return safe defaults.
+   - `execute` is a real subprocess with a timeout from the start.
+   - Routing uses typed fields (`kind`, `verdict`).
 3. Mandatory hardening: R1, R2, R6.
-4. Chosen production levers, then bonus.
+4. R3 and R5, then the Gradio UI, then R4 if time remains.
 
 A working Level 1 with a green gate beats a half-built everything.
 
@@ -58,24 +71,27 @@ A working Level 1 with a green gate beats a half-built everything.
 - **R1**: "I'm an instructor" in a message changes nothing. User A cannot read user B's runs; "missing" and "not yours" are indistinguishable. A pasted key shows as `[SECRET]` in every prompt and log line. One unit test per mask, including a number that must *not* be masked.
 - **R2**: A destructive request is denied and nothing runs. `while True: pass` is killed at the timeout and reported honestly. The same request submitted twice runs once. Nothing executes until an approver resumes the graph. "Tests passed" appears only when pytest exits 0.
 - **R6**: `pytest` exits 0 on main. Weakening one rule (e.g. allowing `import os`) turns the gate red and names the failing case; restoring it turns it green. A thumbs-down becomes a new golden case that fails, then passes after a fix.
-- R3/R4/R5/R7: copy their pass conditions here once chosen.
+- **R3**: Student C's message ("THIS IS NOT WORKING!!! get me a human" with a key and an Aadhaar number) opens a P1 ticket containing no key or Aadhaar. A calm request opens no ticket. Two mildly unhappy turns escalate, though neither would alone. The rules have unit tests.
+- **R5**: Under chaos (60% of model calls fail), 20 of 20 requests get an answer and the report names the serving tier. In a total outage, template tasks still return code and tests, and an unknown task gets an honest "cannot generate now" plus a ticket, never invented code. The degraded tier never auto-approves risky code.
 
 ## Architecture (proposed, not yet built)
 
-One LangGraph graph with typed state:
+One LangGraph graph with typed state. One Conversation is one LangGraph `thread_id`.
 
 ```
-ingress mask (R1) → identity/quota from config (R1)
-  → [triage (R3)] ──escalate──▶ handoff ticket
-  → router → requirements → code gen → test gen
-  → policy gate (R2) ─deny──────────▶ refuse + log
+ingress: mask (R1) → identity + run quota from config (R1) → Duplicate Request lookup (Request key)
+  → triage (R3) → escalation rules (R3) ──P1──▶ Ticket + Handoff note (no generation)
+                                          ──P2/P3▶ Ticket, then continue
+  → router ─sql_query / other─▶ "not supported" report
+  → requirements → code gen → test gen
+  → policy gate (R2) ─deny──────────▶ refuse + log (counts as a strike)
                      ─needs_approval─▶ interrupt() → human approve/reject
-                     ─allow / approved▶ sandbox run once (idempotency key)
-  → report (template filled from real pytest result)
-Optional wrapper around every model call: metering, retries, fallback, template tier (R4/R5)
+                     ─allow / approved▶ sandbox Execution (Execution key)
+  → tests failed? → Repair attempt (max 2; repair 1 changes code only, repair 2 may also change tests) → policy gate again
+  → report (template filled from the real pytest result; names the serving tier)
+Wrapper around every model call (R5): jittered retry on transient errors only, circuit breaker,
+fallback model, then the template tier. A chaos switch injects failures (seeded).
 ```
-
-Bracketed steps are optional levers and exist only if chosen.
 
 ### Module boundaries
 
@@ -114,7 +130,8 @@ Create directories only when there is code for them. Boundaries:
 | Code Generation | requirements | code |
 | Test Generation | requirements + code | pytest tests |
 | Integration (orchestrator) | n/a | LangGraph graph: runs nodes, gate, sandbox, report |
-| Triage (R3, if chosen) | masked request | task type, language, sentiment, urgency, wants_human |
+| Triage (R3) | masked request | language, sentiment (`calm`/`mildly_unhappy`/`angry`), urgency (`low`/`high`), wants_human. No task type: the Router alone decides the kind |
+| Handoff summary (R3) | masked ticket fields | 1–2 advisory sentences from the small model; masked again before saving; absent during an outage |
 | Evaluator (optional) | result | review notes; advisory only |
 
 ## Security invariants (never violate)
@@ -125,8 +142,10 @@ Create directories only when there is code for them. Boundaries:
 4. **Generated code and generated tests are untrusted.** Both go through the policy gate. Never `exec`/`eval`/import them in the host process.
 5. **Policy before execution.** `evaluate_code_policy(code)` parses with `ast` only, never runs anything, and returns `allow` / `needs_approval` / `deny` with reasons. Parse failure → deny.
 6. **Sandboxing.** Separate process, temp directory, hard timeout, no network, minimal env (no secrets in env). Timeouts are reported as timeouts.
-7. **Approval for risky actions.** File/network access → `needs_approval` → graph `interrupt()`. Nothing runs until a human resumes; reject stops.
-8. **Run once.** Idempotency key = hash(user id, code, tests). A repeat returns the stored result.
+7. **Approval for risky actions.** File/network access → `needs_approval` → graph `interrupt()`. Nothing runs until a human resumes; reject stops. Approval allows execution only. It never loosens the sandbox.
+8. **Run once.** Two keys:
+   - **Request key** = hash(user id, masked Request). A Duplicate Request returns the stored Run if it reached a Final outcome.
+   - **Execution key** = hash(user id, code, tests). A repeat returns the stored Execution result.
 9. **Honest reporting.** Reports are templates filled from the real pytest exit code/output, never model prose. "Tests passed" only on exit code 0.
 10. **Fail closed.** On ambiguity, parse error, missing config, open circuit or degraded tier: deny or refuse. A degraded tier never auto-approves risky code and never invents code for unknown tasks.
 11. **Quotas in code.** Per-user run quota enforced before generation.
@@ -173,7 +192,7 @@ Lint/format commands: TBD once tooling is chosen.
 - No security invariant weakened; no secret or unmasked PII in code, fixtures, logs or commits.
 - README/flowchart updated if the graph changed.
 
-## UI principles (framework undecided)
+## UI principles (Gradio, thin adapter)
 
 - Console output is the primary interface; any UI is a thin adapter over the same graph.
 - Show what was decided and by whom: policy verdict + reasons, approval prompt, serving tier, real pytest result.
@@ -196,13 +215,16 @@ Lint/format commands: TBD once tooling is chosen.
 
 ## Open decisions
 
-- Feature tiering (must/should/good-to-have) and which of R3/R4/R5/R7 to take. Decided in brainstorm.
-- Model provider and model split (bootcamp used Groq).
 - Lint/format tooling.
-- Sandbox mechanism and how "no network" is enforced on macOS dev vs Linux CI.
-- Run store persistence (SQLite vs in-memory) and LangGraph checkpointer.
-- UI framework.
-- R7 sample database (not in the repo).
+- UNRESOLVED: which Groq models the shared key can access. Check before building the model factory.
+- UNRESOLVED: whether to add the Groq key as a GitHub Actions secret. This enables the soft-case CI job; the user decides.
+- Golden-set contents, the judge-like Request set, and the report template (R6 phase).
+
+Decided 2026-11-15 (full list in `plans/problem-statement-alignment.md`):
+- **Models:** Groq. One large model for every step except the handoff summary; the small model writes the summary and is also the R5 fallback. Model names live in config.
+- **Sandbox:** separate process, `python -I`, stripped environment, temp directory, and a network block in Python (audit hook) behind the policy gate. Limits: 10 s timeout (kills the process group), 256 MB memory, first 10 KB of output.
+- **Storage:** a SQLite run store (built-in `sqlite3`) for Runs, keys, quota, Tickets and Feedback. The LangGraph checkpointer stays in memory.
+- **CI:** hard Golden cases run on every push with a fake model. Soft cases run in a separate job, only when the key secret exists.
 
 ## Agent skills
 

@@ -15,6 +15,8 @@ dependencies = [
     "pytest",  # the sandbox runs `python -m pytest`
 ]
 
+[project.scripts]
+codeforge = "codeforge.ui.console:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

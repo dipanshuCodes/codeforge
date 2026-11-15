@@ -45,6 +45,9 @@ def test_golden_set_shape():
     ids = [c["id"] for c in CASES]
     assert len(ids) == len(set(ids)), "case ids must be unique"
     assert len(CASES) >= 20 and len(HARD) >= 10 and len(SOFT) >= 10
+    for c in CASES:
+        # A promoted Feedback draft joins the gate only after a human writes its expectation.
+        assert not c.get("draft"), f"{c['id']}: still a draft; write its expected outcome"
     for c in HARD:
         assert c["check"] in OFFLINE_CHECKS, f"{c['id']}: hard cases must run offline"
     for c in SOFT:

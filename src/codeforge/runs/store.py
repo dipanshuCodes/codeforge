@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from pydantic import BaseModel
 
 from codeforge.config import Settings
+from codeforge.privacy.masking import mask
 from codeforge.reporting.outcome import FINAL_OUTCOMES, Outcome
 
 _FIELDS = (
@@ -53,6 +54,26 @@ CREATE TABLE IF NOT EXISTS tickets (
     request TEXT NOT NULL
 )
 """
+
+
+_FEEDBACK_SCHEMA = """
+CREATE TABLE IF NOT EXISTS feedback (
+    feedback_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    run_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    reason TEXT NOT NULL
+)
+"""
+
+
+class FeedbackRecord(BaseModel):
+    """A User's thumbs-down on one of their own Runs. `reason` is always masked."""
+
+    feedback_id: str
+    run_id: str
+    created_at: str
+    reason: str
 
 
 class TicketRecord(BaseModel):
@@ -97,6 +118,7 @@ class RunStore:
             conn.execute(_SCHEMA)
             conn.execute(_TICKETS_SCHEMA)
             conn.execute(_EXECUTIONS_SCHEMA)
+            conn.execute(_FEEDBACK_SCHEMA)
             # Databases made before a column existed get it added (no data is changed).
             have = {row["name"] for row in conn.execute("PRAGMA table_info(runs)")}
             for f in _FIELDS:
@@ -161,6 +183,29 @@ class RunStore:
                 " WHERE user_id = ? ORDER BY created_at", (self._user_id,)
             ).fetchall()
         return [TicketRecord(**dict(r)) for r in rows]
+
+    def add_feedback(self, run_id: str, reason: str) -> str | None:
+        """Store Feedback on the config User's own Run. None if the Run is missing or not
+        theirs (indistinguishable). The reason is user text, so it is masked here."""
+        if self.get(run_id) is None:
+            return None
+        feedback_id = uuid.uuid4().hex
+        with closing(self._connect()) as conn, conn:
+            conn.execute(
+                "INSERT INTO feedback (feedback_id, user_id, run_id, created_at, reason)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (feedback_id, self._user_id, run_id, datetime.now(timezone.utc).isoformat(),
+                 mask(reason)),
+            )
+        return feedback_id
+
+    def get_feedback(self, feedback_id: str) -> FeedbackRecord | None:
+        with closing(self._connect()) as conn:
+            row = conn.execute(
+                "SELECT feedback_id, run_id, created_at, reason FROM feedback"
+                " WHERE feedback_id = ? AND user_id = ?", (feedback_id, self._user_id),
+            ).fetchone()
+        return FeedbackRecord(**dict(row)) if row else None
 
     def find_final_run(self, request_key: str) -> RunRecord | None:
         """The config User's newest original Run with this Request key and a Final outcome."""

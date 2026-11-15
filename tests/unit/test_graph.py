@@ -153,7 +153,9 @@ def test_missing_function_name_cannot_generate(env):
     assert final["outcome"] == "cannot_generate"
 
 
-def test_failing_tests_no_repair_in_l1(env):
+def test_failing_tests_are_not_repaired_when_the_budget_is_zero(env):
+    settings, store, saver, spy = env
+    env = (settings.model_copy(update={"max_repair_attempts": 0}), store, saver, spy)
     g = _graph(env, {CodeOutput: CodeOutput(code="def is_palindrome(s):\n    return False\n" + FILE_HELPER)})
     _submit(g)
     final = g.invoke(Command(resume="approve"), CFG)

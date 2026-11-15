@@ -46,7 +46,8 @@ flowchart TD
     H -- reject --> R
     H -- approve --> X
     G -- allow --> X[Sandbox: run tests once]
-    X -- tests failed, up to 2 repairs --> F
+    X -- tests failed, up to 2 repairs --> V[Repair: code only, then code and tests;<br/>weaker tests rejected]
+    V --> G
     X --> P[Report from the real pytest result]
 ```
 

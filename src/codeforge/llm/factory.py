@@ -20,3 +20,12 @@ def build_caller(settings: Settings, primary: StructuredCaller | None = None,
         primary = ChaosCaller(primary, settings.chaos_rate, settings.chaos_seed)
         fallback = ChaosCaller(fallback, settings.chaos_rate, settings.chaos_seed + 1)
     return ResilientCaller(primary, fallback)
+
+
+def build_summary_caller(settings: Settings, inner: StructuredCaller | None = None) -> StructuredCaller:
+    """Small model for the advisory Handoff summary (R3). No retry or fallback: on any failure
+    the summary is simply absent. Chaos applies here too."""
+    caller = inner or GroqCaller(settings.small_model)
+    if settings.chaos_rate > 0:
+        caller = ChaosCaller(caller, settings.chaos_rate, settings.chaos_seed + 2)
+    return caller

@@ -139,7 +139,6 @@ class RunStore:
             conn.execute(_SCHEMA)
             conn.execute(_TICKETS_SCHEMA)
             conn.execute(_EXECUTIONS_SCHEMA)
-<<<<<<< HEAD
             conn.execute(_FEEDBACK_SCHEMA)
             # Databases made before a column existed get it added (no data is changed).
             have = {row["name"] for row in conn.execute("PRAGMA table_info(runs)")}
@@ -151,24 +150,6 @@ class RunStore:
             for f, kind in _TICKET_EXTRA.items():
                 if f not in have:
                     conn.execute(f"ALTER TABLE tickets ADD COLUMN {f} {kind}")
-=======
-
-            have = {
-                row["name"]
-                for row in conn.execute("PRAGMA table_info(runs)")
-            }
-
-            for field in _FIELDS:
-                if field not in have:
-                    kind = (
-                        "INTEGER"
-                        if field in _INT_FIELDS
-                        else "TEXT"
-                    )
-                    conn.execute(
-                        f"ALTER TABLE runs ADD COLUMN {field} {kind}"
-                    )
->>>>>>> 58086a3 (feat: add instructor pending approval queue)
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self._db_path)
@@ -235,48 +216,20 @@ class RunStore:
                 (self._user_id, since_iso, *sorted(not_counted)),
             ).fetchone()
 
-<<<<<<< HEAD
+        return count
+
     def add_ticket(self, run_id: str, reason: str, serving_tier: str | None, request: str, *,
                    priority: str | None = None, sla_hours: int | None = None,
                    handoff_note: str | None = None) -> str:
         """Open a Ticket for the config User. `request` and `handoff_note` must already be masked."""
-=======
-        return count
-
-    def add_ticket(
-        self,
-        run_id: str,
-        reason: str,
-        serving_tier: str | None,
-        request: str,
-    ) -> str:
->>>>>>> 58086a3 (feat: add instructor pending approval queue)
         ticket_id = uuid.uuid4().hex
 
         with closing(self._connect()) as conn, conn:
             conn.execute(
-<<<<<<< HEAD
                 "INSERT INTO tickets (ticket_id, user_id, run_id, created_at, reason, serving_tier,"
                 " request, priority, sla_hours, handoff_note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (ticket_id, self._user_id, run_id, datetime.now(timezone.utc).isoformat(), reason,
                  serving_tier, request, priority, sla_hours, handoff_note),
-=======
-                """
-                INSERT INTO tickets
-                (ticket_id, user_id, run_id, created_at,
-                 reason, serving_tier, request)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    ticket_id,
-                    self._user_id,
-                    run_id,
-                    datetime.now(timezone.utc).isoformat(),
-                    reason,
-                    serving_tier,
-                    request,
-                ),
->>>>>>> 58086a3 (feat: add instructor pending approval queue)
             )
 
         return ticket_id
@@ -284,23 +237,13 @@ class RunStore:
     def list_tickets(self) -> list[TicketRecord]:
         with closing(self._connect()) as conn:
             rows = conn.execute(
-<<<<<<< HEAD
                 "SELECT ticket_id, run_id, created_at, reason, serving_tier, request, priority,"
                 " sla_hours, handoff_note FROM tickets"
                 " WHERE user_id = ? ORDER BY created_at", (self._user_id,)
-=======
-                """
-                SELECT ticket_id, run_id, created_at,
-                       reason, serving_tier, request
-                FROM tickets
-                WHERE user_id = ?
-                ORDER BY created_at
-                """,
-                (self._user_id,),
->>>>>>> 58086a3 (feat: add instructor pending approval queue)
             ).fetchall()
 
-<<<<<<< HEAD
+        return [TicketRecord(**dict(row)) for row in rows]
+
     def add_feedback(self, run_id: str, reason: str) -> str | None:
         """Store Feedback on the config User's own Run. None if the Run is missing or not
         theirs (indistinguishable). The reason is user text, so it is masked here."""
@@ -326,17 +269,6 @@ class RunStore:
 
     def find_final_run(self, request_key: str) -> RunRecord | None:
         """The config User's newest original Run with this Request key and a Final outcome."""
-=======
-        return [
-            TicketRecord(**dict(row))
-            for row in rows
-        ]
-
-    def find_final_run(
-        self,
-        request_key: str,
-    ) -> RunRecord | None:
->>>>>>> 58086a3 (feat: add instructor pending approval queue)
         marks = ", ".join("?" for _ in FINAL_OUTCOMES)
 
         with closing(self._connect()) as conn:

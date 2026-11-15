@@ -43,6 +43,7 @@ class Settings(BaseModel):
     db_path: str = "codeforge.db"
     sandbox_timeout_s: float = 10.0
     max_output_bytes: int = 10_240
+    sandbox_memory_bytes: int = 256 * 1024 * 1024  # enforced on Linux; macOS ignores RLIMIT_AS
     max_repair_attempts: int = 0
     run_quota: int = 5  # Requests per User per day (R1 demo User: 5, chaos-run User: 25)
 

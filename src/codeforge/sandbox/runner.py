@@ -2,9 +2,12 @@
 
 Limits: isolated interpreter (-I), fresh temp dir, hard timeout that kills the whole process
 group, stripped environment (no secrets), output capped. Inside the child, an audit hook set
-before pytest starts blocks the network, process spawning and writes outside the temp dir.
-Audit hooks can't be removed once added. These limits hold
+before pytest starts blocks the network, process spawning and writes outside the temp dir,
+and RLIMIT_AS caps memory. Audit hooks can't be removed once added. These limits hold
 whatever the policy verdict was: approval allows execution, never a looser sandbox.
+
+macOS does not enforce RLIMIT_AS, so the memory cap applies on Linux (CI) only; elsewhere
+the timeout is the backstop.
 """
 
 from __future__ import annotations
@@ -20,11 +23,22 @@ from pydantic import BaseModel
 
 SOLUTION_MODULE = "solution"
 TEST_FILE = f"test_{SOLUTION_MODULE}.py"
+DEFAULT_MEMORY_LIMIT = 256 * 1024 * 1024
 
-# Runs in the child as `python -I -B -c _BOOTSTRAP <pytest args...>`.
+# Runs in the child as `python -I -B -c _BOOTSTRAP <memory limit> <pytest args...>`.
 _BOOTSTRAP = """
 import os, sys
 ROOT = os.path.realpath(os.getcwd())
+limit = int(sys.argv[1])
+try:
+    import resource
+    _, hard = resource.getrlimit(resource.RLIMIT_AS)
+    resource.setrlimit(resource.RLIMIT_AS, (limit, hard))
+except (ImportError, ValueError, OSError) as exc:
+    if sys.platform != "darwin":  # fail closed where the cap is expected to work
+        print(f"sandbox: could not set the memory cap: {exc}", file=sys.stderr)
+        sys.exit(3)
+
 _SPAWN = ("subprocess.Popen", "os.system", "os.exec", "os.posix_spawn", "os.spawn",
           "os.fork", "os.forkpty", "pty.spawn")
 _PATH_EVENTS = ("os.remove", "os.rmdir", "os.mkdir", "os.rename", "os.replace", "os.chmod",
@@ -58,7 +72,7 @@ def _hook(event, args):
 
 sys.addaudithook(_hook)
 import pytest
-sys.exit(pytest.main(sys.argv[1:]))
+sys.exit(pytest.main(sys.argv[2:]))
 """
 
 
@@ -70,6 +84,7 @@ class ExecutionResult(BaseModel):
 
 def run_pytest(
     code: str, tests: str, *, timeout_s: float, max_output_bytes: int,
+    memory_limit_bytes: int = DEFAULT_MEMORY_LIMIT,
 ) -> ExecutionResult:
     """Run `tests` against `code` (saved as solution.py) and return the real pytest result."""
     with tempfile.TemporaryDirectory(prefix="codeforge-") as tmp, tempfile.TemporaryFile() as out:
@@ -79,7 +94,8 @@ def run_pytest(
         # TMPDIR keeps pytest's tmp_path inside the temp dir, where writes are allowed.
         env = {"PATH": os.environ.get("PATH", ""), "HOME": tmp, "TMPDIR": tmp}
         # -B: no .pyc writes, so nothing is written outside the temp dir.
-        cmd = [sys.executable, "-I", "-B", "-c", _BOOTSTRAP, "-q", "-p", "no:cacheprovider", TEST_FILE]
+        cmd = [sys.executable, "-I", "-B", "-c", _BOOTSTRAP, str(memory_limit_bytes),
+               "-q", "-p", "no:cacheprovider", TEST_FILE]
         proc = subprocess.Popen(
             cmd, cwd=tmp, env=env, stdin=subprocess.DEVNULL, stdout=out,
             stderr=subprocess.STDOUT, start_new_session=True,

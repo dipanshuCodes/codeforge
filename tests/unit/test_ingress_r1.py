@@ -43,6 +43,20 @@ def _run(graph, text, thread="t1", answer="approve"):
     return result
 
 
+def test_pasted_key_and_aadhaar_are_masked_in_prompts_run_and_db(tmp_path):
+    graph, caller, store, settings = _setup(tmp_path)
+    final = _run(graph, f"add two numbers. my key {FAKE_KEY} aadhaar {FAKE_AADHAAR}")
+    assert final["request"] == "add two numbers. my key [SECRET] aadhaar [AADHAAR]"
+    assert caller.calls, "the fake model was called"
+    for _, system, user in caller.calls:
+        assert FAKE_KEY not in system + user and FAKE_AADHAAR not in system + user
+    assert any("[SECRET]" in user for _, _, user in caller.calls)
+    run = store.get(final["run_id"])
+    assert run.request == final["request"] and FAKE_KEY not in run.report
+    raw = open(settings.db_path, "rb").read()
+    assert FAKE_KEY.encode() not in raw and FAKE_AADHAAR.encode() not in raw
+
+
 def test_quota_refuses_before_any_model_call(tmp_path):
     graph, caller, store, _ = _setup(tmp_path, quota=2)
     _run(graph, "add two numbers", thread="a")

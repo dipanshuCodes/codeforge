@@ -46,7 +46,7 @@ class Settings(BaseModel):
     sandbox_timeout_s: float = 10.0
     max_output_bytes: int = 10_240
     sandbox_memory_bytes: int = 256 * 1024 * 1024  # enforced on Linux; macOS ignores RLIMIT_AS
-    max_repair_attempts: int = 0
+    max_repair_attempts: int = 2  # 1-3 Executions per Run
     chaos_rate: float = 0.0  # share of model calls failed on purpose (R5); 0 = off
     chaos_seed: int = 0
     run_quota: int = 5  # Requests per User per day (R1 demo User: 5, chaos-run User: 25)

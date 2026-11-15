@@ -11,6 +11,7 @@ from codeforge.config import Settings
 from codeforge.graph.nodes import Nodes
 from codeforge.graph.state import RunState
 from codeforge.llm.caller import StructuredCaller
+from codeforge.policy.repair import should_repair
 from codeforge.reporting.outcome import outcome_from_execution
 from codeforge.runs.store import RunStore
 from codeforge.sandbox.runner import ExecutionResult, run_pytest
@@ -51,18 +52,28 @@ def build_graph(
 ):
     nodes = Nodes(settings, caller, store, run_tests)
 
-    def after_execute(state: RunState) -> str:
+    def _wants_repair(state: RunState) -> bool:
         execution = state.get("execution") or {}
-        passed = outcome_from_execution(
+        outcome = state.get("outcome") or outcome_from_execution(
             execution.get("exit_code"), bool(execution.get("timed_out")), execution.get("output") or ""
-        ) == "tests_passed"
-        if not passed and state.get("attempts", 0) <= settings.max_repair_attempts:
-            return "codegen"  # Repair attempt (max_repair_attempts = 0 in L1)
+        )
+        return should_repair(outcome, state.get("repairs_tried", 0),
+                             settings.max_repair_attempts, state.get("serving_tier"))
+
+    def after_execute(state: RunState) -> str:
+        return "repair" if _wants_repair(state) else "report"
+
+    def after_repair(state: RunState) -> str:
+        status = state.get("repair_status")
+        if status == "proposed":
+            return "policy"  # repaired code and tests are untrusted: back through the gate
+        if status == "rejected" and _wants_repair(state):
+            return "repair"  # a rejected attempt is spent; the next one may still run
         return "report"
 
     g = StateGraph(RunState)
     for name in ("ingress", "triage", "escalation", "router", "requirements", "codegen",
-                 "testgen", "policy", "approval", "execute", "report"):
+                 "testgen", "policy", "approval", "execute", "repair", "report"):
         g.add_node(name, getattr(nodes, name))
 
     g.add_edge(START, "ingress")
@@ -75,6 +86,7 @@ def build_graph(
     g.add_conditional_edges("testgen", _continue_or_report("policy"), ["policy", "report"])
     g.add_conditional_edges("policy", _after_policy, ["execute", "approval", "report"])
     g.add_conditional_edges("approval", _after_approval, ["execute", "report"])
-    g.add_conditional_edges("execute", after_execute, ["codegen", "report"])
+    g.add_conditional_edges("execute", after_execute, ["repair", "report"])
+    g.add_conditional_edges("repair", after_repair, ["policy", "repair", "report"])
     g.add_edge("report", END)
     return g.compile(checkpointer=checkpointer)

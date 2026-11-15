@@ -25,6 +25,9 @@ class ReportInput(BaseModel):
     ticket_id: str | None = None
     run_quota: int | None = None
     execution_reused: bool = False
+    repairs_tried: int = 0
+    max_repairs: int = 0
+    repair_notes: list[str] = []
 
 
 def _headline(r: ReportInput) -> str:
@@ -75,6 +78,9 @@ def render_report(r: ReportInput) -> str:
         lines.append(f'Result:       {result} · "{summary}"' if summary else f"Result:       {result}")
         if r.execution_reused:
             lines.append("              Execution reused: the same code and tests ran before")
+    if r.repairs_tried:
+        lines.append(f"Repairs:      {r.repairs_tried} of {r.max_repairs} tried")
+        lines.extend(f"              - {note}" for note in r.repair_notes)
     if r.code:
         lines += ["── code ──", r.code.rstrip()]
     if r.tests:

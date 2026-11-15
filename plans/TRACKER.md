@@ -3,6 +3,7 @@
 The one place to see what is done and what is left. **Submission: 2026-11-15, 3:30 PM IST.**
 
 How to use it:
+- Each open phase has a GitHub issue (linked in the Overview table) with the checklist and how to pick it up.
 - Before starting an item, put your name in **Owner** and set Status to `in progress`.
 - When it is done, set Status to `done`, fill **Evidence** (test command + exit code, commit,
   or transcript location) and the time. "Done" means the check in the Evidence column passes.
@@ -71,21 +72,100 @@ phase is named in the box) · **grey dashed** = not built yet.
 Right now: every L1 node runs end to end offline (94 unit tests green). Not yet checked live
 against Groq. Next: L1 live check and commit, then R1 / R2 / R6.
 
+## Cases by node: covered vs pending
+
+`[x]` = built and covered by a unit test · `[ ]` = pending (phase in brackets). "Covered" means
+offline unit tests only; nothing here is checked live against Groq yet.
+
+**ingress**
+- [x] User id and role come from config only
+- [x] New Run created and saved before approval; a second Request on the same thread starts clean
+- [ ] Mask `[SECRET]`, `[EMAIL]`, `[CARD]`, `[AADHAAR]`, `[PHONE]` (currently pass-through) [R1]
+- [ ] Must-not-mask numbers (`2432902008176640000`, `1234567890`, `2024`) [R1]
+- [ ] "I'm an instructor" changes nothing [R1]
+- [ ] Run quota per user, enforced before generation [R1]
+- [ ] Duplicate Request returns the stored Run (Request key) [R2]
+
+**triage**
+- [ ] Model call for language, sentiment, urgency, wants_human (now fixed: calm / low / no human) [R3]
+
+**escalation**
+- [ ] P1 (angry, or asks for a human) → Ticket, skips generation [R3]
+- [ ] P2/P3 → Ticket, then continue [R3]
+- [ ] Two mildly unhappy turns escalate [R3]
+- [ ] Calm Request opens no Ticket [R3]
+- [ ] Handoff note with no key or Aadhaar [R3]
+
+**router**
+- [x] `python_function` goes on to requirements
+- [x] `sql_query` → "not supported" report, no code
+- [x] Bad router output → `other` → "not supported"
+- [x] Model outage → "cannot generate now"
+
+**requirements / codegen / testgen**
+- [x] Happy path (palindrome example)
+- [x] Bad model output → "cannot generate now"
+- [x] Generated code missing the required function name → "cannot generate now"
+- [x] Tests import from the solution module
+- [ ] Retry, circuit breaker, small-model fallback, template tier [R5]
+- [ ] Chaos switch: 20 of 20 Requests answered at 60% failures [R5]
+
+**policy**
+- [x] Parse failure, null byte, lone surrogate, oversized or deeply nested source → deny
+- [x] Unparsable tests → denied without asking for approval
+- [x] Any other valid code → needs_approval (stub)
+- [ ] Allowlist: deny `os`, `sys`, `subprocess`, `shutil`, `ctypes`, `importlib`, `builtins`, `eval`/`exec`/`compile`/`__import__`, dunders [R2]
+- [ ] Safe code → `allow` (no rule yields it yet) [R2]
+- [ ] Destructive Request ("delete my home folder", Student B) → denied, nothing runs [R2]
+- [ ] Weakening one rule turns the gate red and names the case [R6]
+
+**approval**
+- [x] Only an exact "approve" approves (case and spaces ignored)
+- [x] Anything else, including empty, rejects; reject runs nothing
+- [ ] Degraded tier never auto-approves risky code [R5]
+
+**execute (sandbox)**
+- [x] Passing tests (exit 0), failing tests (exit 1), no tests (exit 5)
+- [x] `while True: pass` killed at the timeout and reported as a timeout
+- [x] Whole process group killed
+- [x] Env stripped (no Groq key); output cut to 10 KB; non-UTF-8 safe; temp dir removed
+- [ ] Network block [R2]
+- [ ] 256 MB memory cap (check macOS vs Linux CI) [R2]
+- [ ] Same code + tests runs once (Execution key) [R2]
+
+**repair**
+- [x] Edge exists; with max attempts = 0 a failing Run ends in "tests failed"
+- [ ] Repair 1 changes code only; repair 2 may change tests [after R1/R2/R6]
+- [ ] A repair may not reduce tests or assertions [after R1/R2/R6]
+- [ ] Policy gate runs again after each repair [after R1/R2/R6]
+
+**report**
+- [x] Passed, failed (with output), exit 5, timeout, denied, rejected, unsupported, cannot_generate
+- [x] "Tests passed" only on exit 0 with a real passing test; all-skipped is never a pass
+- [x] Run saved to SQLite; one user cannot read another's Run (missing = not yours)
+- [ ] Report names the Serving tier from the resilience layer [R5]
+
+**Cross-cutting**
+- [ ] Live Groq smoke test and the two live checks (L1 example, Student B) [L1]
+- [ ] `evals/golden_set.json`: ≥20 cases, hard 100%, soft ≥85% [R6]
+- [ ] Hidden reference tests, CI gate, feedback flywheel [R6]
+- [ ] Gradio UI [Neha]
+
 ## Overview
 
 | # | Phase | Owner | Status | Plan |
 |---|---|---|---|---|
 | 1 | Brainstorm and scope | Dipanshu | done | [01 problem statement](2026-11-15-01-problem-statement-alignment.md) |
-| 2 | Level 1 pipeline | Dipanshu | in progress (code + unit tests done; live check open) | [02 node actions](2026-11-15-02-l1-node-actions.md), [03 L1 plan](2026-11-15-03-l1-pipeline.md) |
-| 3a | R1 Identity and privacy | Siyahul | todo | — |
-| 3b | R2 Safe execution | Siyahul | todo | — |
-| 3c | R6 Evals as a gate | Siyahul | todo | — |
-| 3d | Repair loop (after R1/R2/R6 green) | — | todo | — |
-| 4a | R3 Escalation and handoff | Siyahul | todo | — |
-| 4b | R5 Resilience | Siyahul | todo | — |
-| 4c | Gradio UI (drop if not working by **1:30 PM IST**) | Neha | todo | — |
-| 4d | R4 Cost and latency (only if time remains) | — | todo | — |
-| 5 | Deliverables and presentation | Neha + all | todo | — |
+| 2 | Level 1 pipeline | Dipanshu | in progress (code + unit tests done; live check open) | [02 node actions](2026-11-15-02-l1-node-actions.md), [03 L1 plan](2026-11-15-03-l1-pipeline.md), issue [#3](https://github.com/dipanshuCodes/codeforge/issues/3) |
+| 3a | R1 Identity and privacy | Siyahul | todo | issue [#4](https://github.com/dipanshuCodes/codeforge/issues/4) |
+| 3b | R2 Safe execution | Siyahul | todo | issue [#5](https://github.com/dipanshuCodes/codeforge/issues/5) |
+| 3c | R6 Evals as a gate | Siyahul | todo | issue [#6](https://github.com/dipanshuCodes/codeforge/issues/6) |
+| 3d | Repair loop (after R1/R2/R6 green) | — | todo | issue [#7](https://github.com/dipanshuCodes/codeforge/issues/7) |
+| 4a | R3 Escalation and handoff | Siyahul | todo | issue [#8](https://github.com/dipanshuCodes/codeforge/issues/8) |
+| 4b | R5 Resilience | Siyahul | todo | issue [#9](https://github.com/dipanshuCodes/codeforge/issues/9) |
+| 4c | Gradio UI (drop if not working by **1:30 PM IST**) | Neha | todo | issue [#10](https://github.com/dipanshuCodes/codeforge/issues/10) |
+| 4d | R4 Cost and latency (only if time remains) | — | todo | issue [#11](https://github.com/dipanshuCodes/codeforge/issues/11) |
+| 5 | Deliverables and presentation | Neha + all | todo | issue [#12](https://github.com/dipanshuCodes/codeforge/issues/12) |
 | — | R7 Safe SQL agent | — | dropped (out of scope) | — |
 
 Order: 2 → 3a/3b/3c → 3d → 4a/4b → 4c → 4d. Don't start a later phase while Level 1 or the gate is red.
@@ -220,6 +300,6 @@ Plan: [2026-11-15-03-l1-pipeline.md](2026-11-15-03-l1-pipeline.md).
 
 ## Open items
 
-- UNRESOLVED: who adds the Groq key as a GitHub Actions secret.
+- UNRESOLVED: who adds the Groq key as a GitHub Actions secret (issue [#13](https://github.com/dipanshuCodes/codeforge/issues/13)).
 - ~~Are plans committed?~~ Decided 2026-11-15: yes. `plans/` (and this tracker) are committed;
   `AGENTS.md` and `CLAUDE.md` say so.

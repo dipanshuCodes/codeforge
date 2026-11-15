@@ -92,3 +92,20 @@ def test_exit0_without_pass_report():
     text = render_report(_input(outcome="tests_failed", exit_code=0, output="1 skipped in 0.01s\n"))
     assert "NO TEST PASSED (pytest exit 0)" in text
     assert "TESTS PASSED" not in text
+
+
+def test_report_names_repairs_tried_and_notes():
+    text = render_report(_input(outcome="tests_failed", exit_code=1, repairs_tried=2, max_repairs=2,
+                                repair_notes=["repair 2: rejected: repair reduced the number of tests (2 → 1)"]))
+    assert "TESTS FAILED" in text
+    assert "Repairs:      2 of 2 tried" in text
+    assert "- repair 2: rejected: repair reduced the number of tests (2 → 1)" in text
+
+
+def test_report_without_repairs_has_no_repairs_line():
+    assert "Repairs:" not in render_report(_input())
+
+
+def test_passed_after_repair_still_says_passed_from_the_real_result():
+    text = render_report(_input(repairs_tried=1, max_repairs=2))
+    assert "TESTS PASSED" in text and "Repairs:      1 of 2 tried" in text

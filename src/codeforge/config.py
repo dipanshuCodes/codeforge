@@ -23,6 +23,8 @@ ENV_KEYS: tuple[str, ...] = (
     "CODEFORGE_CHAOS_RATE",
     "CODEFORGE_CHAOS_SEED",
     "GROQ_API_KEY",  # read by langchain-groq, never by our code
+    "GOOGLE_API_KEY",  # not read by our code yet: reserved for a possible Gemini model
+    "ANTHROPIC_API_KEY",  # not read by our code yet: reserved for a possible Claude model
 )
 # Later files are weaker: values already set (shell, or an earlier file) are kept.
 ENV_FILES: tuple[str, ...] = (".env.local", ".env")

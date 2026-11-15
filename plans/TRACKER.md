@@ -37,7 +37,7 @@ flowchart TD
     policy["<b>policy</b> · ast allowlist · R2<br/>code + tests"]:::built
     approval{{"<b>approval</b><br/>interrupt · only 'approve' approves"}}:::built
     execute["<b>execute</b> · sandbox<br/>python -I, 10 s, group kill, env strip, 10 KB<br/>audit hook: no net/spawn/outside writes<br/>256 MB (Linux), Execution key · R2"]:::built
-    repair{"<b>repair?</b><br/>edge exists, max attempts = 0<br/>logic · after R1/R2/R6"}:::stub
+    repair{"<b>repair</b> · model + rules<br/>max 2 · repair 1 code only<br/>fewer tests or assertions rejected"}:::built
     report["<b>report</b><br/>template from real pytest exit<br/>saved to SQLite runs table"]:::built
     DONE([Console prints report])
     ui["Gradio UI · Neha"]:::todo
@@ -56,7 +56,7 @@ flowchart TD
     policy -- "allow (no rule yields it yet)" --> execute
     approval -- reject --> report
     approval -- approve --> execute --> repair
-    repair -- "yes (never in L1)" --> codegen
+    repair -- "proposed: gate again" --> policy
     repair -- no --> report --> DONE
     ui -.-> START
     gate -.- report
@@ -136,9 +136,11 @@ offline unit tests only; nothing here is checked live against Groq yet.
 
 **repair**
 - [x] Edge exists; with max attempts = 0 a failing Run ends in "tests failed"
-- [ ] Repair 1 changes code only; repair 2 may change tests [after R1/R2/R6]
-- [ ] A repair may not reduce tests or assertions [after R1/R2/R6]
-- [ ] Policy gate runs again after each repair [after R1/R2/R6]
+- [x] Repair 1 changes code only; repair 2 may change tests
+- [x] A repair may not reduce tests or assertions (a shrunken `parametrize` list is a known gap)
+- [x] Policy gate runs again after each repair
+- [x] Two failed repairs → P3 Ticket (minimal row; R3 enriches it)
+- [ ] Golden cases for repair [R6]
 
 **report**
 - [x] Passed, failed (with output), exit 5, timeout, denied, rejected, unsupported, cannot_generate
@@ -245,10 +247,13 @@ Plan: [2026-11-15-07-repair-loop.md](2026-11-15-07-repair-loop.md) (in progress 
 
 | Item | Status | Evidence |
 |---|---|---|
-| `max_repair_attempts` 0 → 2 | todo | |
-| Repair 1 changes code only; repair 2 may change tests | todo | |
-| Rule: a repair may not reduce tests or assertions | todo | |
-| Policy gate runs again after each repair | todo | |
+| `max_repair_attempts` 0 → 2 | done | `test_config.py::test_loads_identity_from_env` |
+| Repair 1 changes code only; repair 2 may change tests | done | `test_repair_rules.py`, `test_graph_repair.py` |
+| Rule: a repair may not reduce tests or assertions | done | `test_repair_rules.py`, `test_graph_repair.py::test_repair_that_deletes_a_failing_test_is_rejected_and_counted` |
+| Policy gate runs again after each repair | done | `test_graph_repair.py::test_repaired_code_goes_through_the_policy_gate_again` |
+| Execution key guards an unchanged repair | done | rule rejects it first (`test_unchanged_code_is_rejected`); `execute` still replays via the key |
+| Two failed repairs → P3 Ticket | done (minimal; R3 owns Tickets) | `test_graph_repair.py::test_two_failed_repairs_report_the_real_failure_and_open_a_p3_ticket` |
+| Golden cases | todo | blocked on R6 (#6) |
 
 ## 4a. R3 Escalation and handoff — Siyahul
 

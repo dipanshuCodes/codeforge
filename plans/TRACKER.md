@@ -161,7 +161,7 @@ offline unit tests only; nothing here is checked live against Groq yet.
 | 3a | R1 Identity and privacy | Siyahul | todo | issue [#4](https://github.com/dipanshuCodes/codeforge/issues/4) |
 | 3b | R2 Safe execution | Siyahul | in progress | [plan](2026-11-15-05-r2-safe-execution.md) · branch `feat/r2-safe-execution` |
 | 3c | R6 Evals as a gate | Siyahul | todo | issue [#6](https://github.com/dipanshuCodes/codeforge/issues/6) |
-| 3d | Repair loop (after R1/R2/R6 green) | — | todo | issue [#7](https://github.com/dipanshuCodes/codeforge/issues/7) |
+| 3d | Repair loop (after R1/R2/R6 green) | Dipanshu | in progress | issue [#7](https://github.com/dipanshuCodes/codeforge/issues/7) |
 | 4a | R3 Escalation and handoff | Siyahul | todo | issue [#8](https://github.com/dipanshuCodes/codeforge/issues/8) |
 | 4b | R5 Resilience | Siyahul | done (code + unit tests; live Groq check open) | issue [#9](https://github.com/dipanshuCodes/codeforge/issues/9) |
 | 4c | Gradio UI (drop if not working by **1:30 PM IST**) | Neha | todo | issue [#10](https://github.com/dipanshuCodes/codeforge/issues/10) |
@@ -240,6 +240,8 @@ Plan: [2026-11-15-03-l1-pipeline.md](2026-11-15-03-l1-pipeline.md).
 | Feedback flywheel: `/bad` → Feedback → `codeforge feedback promote <id>` → red, then green | todo | |
 
 ## 3d. Repair loop — after R1/R2/R6 are green
+
+Plan: [2026-11-15-07-repair-loop.md](2026-11-15-07-repair-loop.md) (in progress on branch `feat/repair-loop`; R6 golden cases still pending).
 
 | Item | Status | Evidence |
 |---|---|---|

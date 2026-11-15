@@ -86,6 +86,18 @@ def test_writes_inside_the_temp_dir_and_tmp_path_work():
     assert r.exit_code == 0, r.output
 
 
+@pytest.mark.skipif(sys.platform == "darwin", reason="macOS does not enforce RLIMIT_AS")
+def test_memory_cap():
+    tests = (
+        "import pytest\n\n"
+        "def test_big():\n"
+        "    with pytest.raises(MemoryError):\n"
+        "        bytearray(512 * 1024 * 1024)\n"
+    )
+    r = run_pytest(ADD, tests, memory_limit_bytes=256 * 1024 * 1024, **LIMITS)
+    assert r.exit_code == 0, r.output
+
+
 def test_env_is_stripped(monkeypatch):
     monkeypatch.setenv("GROQ_API_KEY", "gsk_FAKEFAKEFAKEFAKEFAKE")
     tests = "import os\n\ndef test_env():\n    assert 'GROQ_API_KEY' not in os.environ\n"

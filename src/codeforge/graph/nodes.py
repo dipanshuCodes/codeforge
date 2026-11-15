@@ -176,6 +176,7 @@ class Nodes:
             state["code"], state["tests"],
             timeout_s=self.settings.sandbox_timeout_s,
             max_output_bytes=self.settings.max_output_bytes,
+            memory_limit_bytes=self.settings.sandbox_memory_bytes,
         )
         return {"execution": result.model_dump(), "attempts": state.get("attempts", 0) + 1}
 

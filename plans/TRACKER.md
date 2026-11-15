@@ -25,7 +25,7 @@ flowchart TD
 
     ingress["<b>ingress</b><br/>mask secrets/PII first · R1<br/>config identity, new Run, reset fields"]:::built
     quota["Run quota · R1<br/>per User per UTC day, before any model call"]:::built
-    reqkey["Request key lookup · R2"]:::todo
+    reqkey["Request key lookup · R2<br/>Duplicate → stored Run"]:::built
     triage["<b>triage</b><br/>fixed: calm / low / no human · R3"]:::stub
     escalation["<b>escalation</b><br/>always none · R3"]:::stub
     ticket["Ticket + Handoff note · R3"]:::todo
@@ -34,9 +34,9 @@ flowchart TD
     codegen["<b>codegen</b> · model"]:::built
     testgen["<b>testgen</b> · model"]:::built
     resilience["retry / breaker / fallback /<br/>template tier · R5"]:::todo
-    policy["<b>policy</b> · ast<br/>parse fail → deny, else needs_approval<br/>allowlist · R2"]:::stub
+    policy["<b>policy</b> · ast allowlist · R2<br/>code + tests"]:::built
     approval{{"<b>approval</b><br/>interrupt · only 'approve' approves"}}:::built
-    execute["<b>execute</b> · sandbox<br/>python -I, 10 s, group kill, env strip, 10 KB<br/>net block, 256 MB, Execution key · R2"]:::stub
+    execute["<b>execute</b> · sandbox<br/>python -I, 10 s, group kill, env strip, 10 KB<br/>audit hook: no net/spawn/outside writes<br/>256 MB (Linux), Execution key · R2"]:::built
     repair{"<b>repair?</b><br/>edge exists, max attempts = 0<br/>logic · after R1/R2/R6"}:::stub
     report["<b>report</b><br/>template from real pytest exit<br/>saved to SQLite runs table"]:::built
     DONE([Console prints report])
@@ -159,7 +159,7 @@ offline unit tests only; nothing here is checked live against Groq yet.
 | 1 | Brainstorm and scope | Dipanshu | done | [01 problem statement](2026-11-15-01-problem-statement-alignment.md) |
 | 2 | Level 1 pipeline | Dipanshu | in progress (code + unit tests done; live check open) | [02 node actions](2026-11-15-02-l1-node-actions.md), [03 L1 plan](2026-11-15-03-l1-pipeline.md), issue [#3](https://github.com/dipanshuCodes/codeforge/issues/3) |
 | 3a | R1 Identity and privacy | Siyahul | todo | issue [#4](https://github.com/dipanshuCodes/codeforge/issues/4) |
-| 3b | R2 Safe execution | Siyahul | todo | issue [#5](https://github.com/dipanshuCodes/codeforge/issues/5) |
+| 3b | R2 Safe execution | Siyahul | in progress | [plan](2026-11-15-05-r2-safe-execution.md) · branch `feat/r2-safe-execution` |
 | 3c | R6 Evals as a gate | Siyahul | todo | issue [#6](https://github.com/dipanshuCodes/codeforge/issues/6) |
 | 3d | Repair loop (after R1/R2/R6 green) | — | todo | issue [#7](https://github.com/dipanshuCodes/codeforge/issues/7) |
 | 4a | R3 Escalation and handoff | Siyahul | todo | issue [#8](https://github.com/dipanshuCodes/codeforge/issues/8) |
@@ -217,12 +217,12 @@ Plan: [2026-11-15-03-l1-pipeline.md](2026-11-15-03-l1-pipeline.md).
 
 | Item | Status | Evidence |
 |---|---|---|
-| Policy allowlist replaces the "everything else needs approval" stub (deny `os`, `sys`, `subprocess`, `shutil`, `ctypes`, `importlib`, `builtins`, `eval`/`exec`/`compile`/`__import__`, dunders, anything not listed) | todo | |
-| Destructive request (Student B) → DENIED, nothing runs | todo | |
-| Network block in the sandbox (audit hook) | todo | |
-| 256 MB memory cap (check `RLIMIT_AS` on macOS vs Linux CI) | todo | |
-| Request key: duplicate Request returns the stored final Run | todo | |
-| Execution key: same code + tests runs once | todo | |
+| Policy allowlist replaces the "everything else needs approval" stub (deny `os`, `sys`, `subprocess`, `shutil`, `ctypes`, `importlib`, `builtins`, `eval`/`exec`/`compile`/`__import__`, dunders, anything not listed) | done | `policy/code_policy.py`; `tests/unit/test_code_policy.py` |
+| Destructive request (Student B) → DENIED, nothing runs | done (golden case → R6) | `test_code_policy.py::test_student_b_delete_home_folder_is_denied`, `test_graph.py::test_denied_code_runs_nothing` |
+| Network block in the sandbox (audit hook) | done; also blocks spawning and writes outside the temp dir | `test_sandbox.py` |
+| 256 MB memory cap (check `RLIMIT_AS` on macOS vs Linux CI) | done on Linux (untested locally); macOS cannot enforce it | `test_sandbox.py::test_memory_cap` (skipped on macOS) |
+| Request key: duplicate Request returns the stored final Run | done | `test_idempotency.py`, `test_run_store.py` |
+| Execution key: same code + tests runs once | done | `test_idempotency.py::test_same_code_and_tests_execute_once` |
 | `while True: pass` killed at the timeout and reported as a timeout | done in L1 sandbox; golden case todo | `test_sandbox.py` |
 | Nothing runs until an approver resumes | done in L1 graph; golden case todo | `test_graph.py` |
 

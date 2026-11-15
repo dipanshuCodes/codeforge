@@ -39,7 +39,7 @@ def classify_failure(exc: BaseException) -> str:
     name = type(exc).__name__.lower()
     if status == 429 or "ratelimit" in name:
         return "rate_limit"
-    if status in (500, 502, 503, 504) or "internalserver" in name or "serviceunavailable" in name:
+    if status in (500, 502, 503, 504, 529) or "internalserver" in name or "serviceunavailable" in name:
         return "server_unavailable"
     if "timeout" in name or isinstance(exc, TimeoutError):
         return "timeout"
@@ -70,6 +70,43 @@ class GroqCaller:
         if result.get("parsing_error") is not None or not isinstance(parsed, schema):
             raise ModelOutputError("structured output failed to parse")
         return parsed
+
+
+class AnthropicCaller:
+    """Calls a Claude model with structured output. The key is read by langchain-anthropic.
+
+    The client's own retries are off (`max_retries=0`): only ResilientCaller retries, so the
+    breaker counts real failures.
+    """
+
+    def __init__(self, model: str, timeout_s: float = 60.0) -> None:
+        from langchain_anthropic import ChatAnthropic  # lazy: tests need no key
+
+        self._llm = ChatAnthropic(model=model, temperature=0, max_retries=0, timeout=timeout_s)
+
+    def call(self, schema: type[T], system: str, user: str) -> T:
+        structured = self._llm.with_structured_output(schema, include_raw=True)
+        try:
+            result: dict[str, Any] = structured.invoke([("system", system), ("user", user)])
+        except (ValidationError, ValueError) as exc:
+            raise ModelOutputError(type(exc).__name__) from exc
+        except Exception as exc:
+            raise ModelUnavailableError(type(exc).__name__, kind=classify_failure(exc)) from exc
+        parsed = result.get("parsed")
+        if result.get("parsing_error") is not None or not isinstance(parsed, schema):
+            raise ModelOutputError("structured output failed to parse")
+        return parsed
+
+
+class UnavailableCaller:
+    """Placeholder for a tier whose API key is missing. Fails at once with a non-transient kind,
+    so it is never retried and never trips the breaker; the chain moves to the next tier."""
+
+    def __init__(self, reason: str = "no API key") -> None:
+        self._reason = reason
+
+    def call(self, schema: type[T], system: str, user: str) -> T:
+        raise ModelUnavailableError(self._reason, kind="other")
 
 
 class FakeCaller:

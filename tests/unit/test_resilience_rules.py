@@ -59,13 +59,15 @@ def test_bad_output_does_not_count_against_the_provider():
     assert s == BreakerState()
 
 
-def test_worst_tier_orders_primary_fallback_template():
+def test_worst_tier_orders_primary_secondary_fallback_template():
     assert worst_tier(None, "primary") == "primary"
+    assert worst_tier("primary", "secondary") == "secondary"
+    assert worst_tier("fallback", "secondary") == "fallback"
     assert worst_tier("primary", "fallback") == "fallback"
     assert worst_tier("template", "primary") == "template"
 
 
-@pytest.mark.parametrize("tier", ["fallback", "template"])
+@pytest.mark.parametrize("tier", ["secondary", "fallback", "template"])
 def test_degraded_tier_never_auto_allows(tier):
     assert degrade_verdict("allow", tier) == "needs_approval"
     assert degrade_verdict("deny", tier) == "deny"

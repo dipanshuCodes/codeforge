@@ -160,7 +160,7 @@ offline unit tests only; nothing here is checked live against Groq yet.
 | 2 | Level 1 pipeline | Dipanshu | in progress (code + unit tests done; live check open) | [02 node actions](2026-11-15-02-l1-node-actions.md), [03 L1 plan](2026-11-15-03-l1-pipeline.md), issue [#3](https://github.com/dipanshuCodes/codeforge/issues/3) |
 | 3a | R1 Identity and privacy | Siyahul | todo | issue [#4](https://github.com/dipanshuCodes/codeforge/issues/4) |
 | 3b | R2 Safe execution | Siyahul | in progress | [plan](2026-11-15-05-r2-safe-execution.md) · branch `feat/r2-safe-execution` |
-| 3c | R6 Evals as a gate | Siyahul | todo | issue [#6](https://github.com/dipanshuCodes/codeforge/issues/6) |
+| 3c | R6 Evals as a gate | Siyahul | done on branch (not pushed; CI needs team agreement) | [07 plan](2026-11-15-07-r6-evals-gate.md), issue [#6](https://github.com/dipanshuCodes/codeforge/issues/6) · branch `claude/r6-evals-gate-cd6abc` |
 | 3d | Repair loop (after R1/R2/R6 green) | — | todo | issue [#7](https://github.com/dipanshuCodes/codeforge/issues/7) |
 | 4a | R3 Escalation and handoff | Siyahul | todo | issue [#8](https://github.com/dipanshuCodes/codeforge/issues/8) |
 | 4b | R5 Resilience | Siyahul | done (code + unit tests; live Groq check open) | issue [#9](https://github.com/dipanshuCodes/codeforge/issues/9) |
@@ -228,16 +228,18 @@ Plan: [2026-11-15-03-l1-pipeline.md](2026-11-15-03-l1-pipeline.md).
 
 ## 3c. R6 Evals as a gate — Siyahul
 
+Plan: [2026-11-15-07-r6-evals-gate.md](2026-11-15-07-r6-evals-gate.md).
+
 | Item | Status | Evidence |
 |---|---|---|
-| `evals/golden_set.json`: ≥20 cases, ≥10 hard, ≥10 soft | todo | |
-| `tests/test_golden_gate.py`: hard 100%, soft ≥85% | todo | |
-| Hidden reference tests in `evals/reference_tests/` | todo | |
-| Judge-like Request set (10–15); our bar ≥90% pass hidden reference tests | todo | |
-| CI: hard cases on every push with a fake model | todo | needs agreement before touching CI |
-| CI: soft-case job only when the Groq secret exists | blocked | UNRESOLVED: who adds the secret |
-| Demo: weakening a rule (allow `import os`) turns the gate red and names the case; restoring turns it green | todo | |
-| Feedback flywheel: `/bad` → Feedback → `codeforge feedback promote <id>` → red, then green | todo | |
+| `evals/golden_set.json`: ≥20 cases, ≥10 hard, ≥10 soft | done: 33 cases, 20 hard, 13 soft (3 escalation cases pending R3) | commit e5be293 |
+| `tests/test_golden_gate.py`: hard 100%, soft ≥85% | done; each hard case is a pytest item named by its case id | `python -m pytest tests/test_golden_gate.py` → 21 passed, 4 skipped (soft needs the key; 3 pending R3), exit 0; commit 161ec93 |
+| Hidden reference tests in `evals/reference_tests/` | done: 12 human-written files, each checked against a human solution in the sandbox | `tests/test_reference_tests.py` 13 passed offline; commit c6d15cd |
+| Judge-like Request set (10–15); our bar ≥90% pass hidden reference tests | done (12 Requests); live score not measured yet | `evals/judge_requests.json`; `test_judge_like_requests_pass_hidden_reference_tests` (llm) skipped: no key in this shell |
+| CI: hard cases on every push with a fake model | done on branch; needs team agreement before merge | `.github/workflows/ci.yml` job `gate`; commit 3968b9d. Red until `test_env_example_lists_every_config_key` is fixed on main |
+| CI: soft-case job only when the Groq secret exists | done; skips with a notice without the secret | job `soft`. UNRESOLVED: who adds the secret (issue #13) |
+| Demo: weakening a rule (allow `import os`) turns the gate red and names the case; restoring turns it green | done | `evals/gate_weakened_output.txt` (FAILED `H11-import-os-denied`, exit 1), `evals/gate_restored_output.txt` (exit 0); commit 93742c6 |
+| Feedback flywheel: `/bad` → Feedback → `codeforge feedback promote <id>` → red, then green | done | `tests/unit/test_feedback.py`, `test_console.py::test_bad_*`; draft replayed red then green after a fix (manual check); commit 06f1089 |
 
 ## 3d. Repair loop — after R1/R2/R6 are green
 

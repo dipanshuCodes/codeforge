@@ -29,7 +29,7 @@ jobs:
     steps:
       - name: No Groq secret, soft cases skipped
         if: env.GROQ_API_KEY == ''
-        run: echo "::notice::GROQ_API_KEY secret is not set; soft cases skipped (issue #13)"
+        run: echo "::notice::GROQ_API_KEY secret is not set; soft cases skipped (see issue 13)"
       - uses: actions/checkout@v4
         if: env.GROQ_API_KEY != ''
       - uses: actions/setup-python@v5

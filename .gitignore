@@ -1,3 +1,10 @@
 sample_agent/
-plans/
 reference/
+.venv/
+__pycache__/
+*.egg-info/
+*.db
+.pytest_cache/
+# Secrets: real config lives here, never committed. .env.example is committed.
+.env
+.env.local

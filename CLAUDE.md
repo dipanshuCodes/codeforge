@@ -29,5 +29,5 @@ Report the actual exit code and failing test names, not a summary of intent.
 - Never print, log or paste real keys/PII into prompts, commits or scratch files. Use fake fixtures.
 - Don't commit, push, add dependencies or edit CI unless asked.
 - Leave the user's uncommitted changes alone.
-- Write plans to `plans/`. `plans/`, `reference/` and `sample_agent/` are gitignored local material; ADRs live in `docs/adr/` and are committed.
+- Write plans to `plans/` (committed; keep `plans/TRACKER.md` current). `reference/` and `sample_agent/` are gitignored local material; ADRs live in `docs/adr/` and are committed.
 - This file and `AGENTS.md` change often early on. When a decision is made, propose the edit to them right away. Read them, don't rely on them in code.

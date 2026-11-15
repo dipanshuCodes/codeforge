@@ -1,0 +1,68 @@
+"""Structured model calls. Agents depend on `StructuredCaller`, never on a provider.
+
+L1: one call, no retry or fallback (R5 wraps this). Failures are typed so the graph can
+tell bad output from an unavailable provider.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Protocol, TypeVar
+
+from pydantic import BaseModel, ValidationError
+
+T = TypeVar("T", bound=BaseModel)
+
+
+class ModelCallError(Exception):
+    """A model call did not produce a usable answer."""
+
+
+class ModelOutputError(ModelCallError):
+    """The model answered, but the output was unparsable or failed validation."""
+
+
+class ModelUnavailableError(ModelCallError):
+    """The provider failed (rate limit, server error, timeout, network)."""
+
+
+class StructuredCaller(Protocol):
+    def call(self, schema: type[T], system: str, user: str) -> T: ...
+
+
+class GroqCaller:
+    """Calls a Groq model with structured output. The key is read by langchain-groq."""
+
+    def __init__(self, model: str) -> None:
+        from langchain_groq import ChatGroq  # imported lazily so tests need no key
+
+        self._llm = ChatGroq(model=model, temperature=0)
+
+    def call(self, schema: type[T], system: str, user: str) -> T:
+        structured = self._llm.with_structured_output(schema, include_raw=True)
+        try:
+            result: dict[str, Any] = structured.invoke([("system", system), ("user", user)])
+        except (ValidationError, ValueError) as exc:
+            raise ModelOutputError(type(exc).__name__) from exc
+        except Exception as exc:  # provider/network errors; R5 retries the transient ones
+            raise ModelUnavailableError(type(exc).__name__) from exc
+        parsed = result.get("parsed")
+        if result.get("parsing_error") is not None or not isinstance(parsed, schema):
+            raise ModelOutputError("structured output failed to parse")
+        return parsed
+
+
+class FakeCaller:
+    """Offline caller for tests: returns or raises a canned value per schema."""
+
+    def __init__(self, responses: dict[type, BaseModel | Exception]) -> None:
+        self._responses = responses
+        self.calls: list[tuple[type, str, str]] = []
+
+    def call(self, schema: type[T], system: str, user: str) -> T:
+        self.calls.append((schema, system, user))
+        if schema not in self._responses:
+            raise ModelOutputError(f"no canned response for {schema.__name__}")
+        value = self._responses[schema]
+        if isinstance(value, Exception):
+            raise value
+        return value  # type: ignore[return-value]

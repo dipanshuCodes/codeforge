@@ -14,12 +14,13 @@ Outcome = Literal[
     "unsupported",
     "cannot_generate",
     "quota_exceeded",
+    "escalated",  # P1 Escalation (R3): handed to a human, nothing generated
 ]
 
 # Settled results (CONTEXT.md "Final outcome"). A Duplicate Request reuses only these;
 # cannot_generate (Transient failure) and quota_exceeded are processed again.
 FINAL_OUTCOMES: frozenset[str] = frozenset({
-    "tests_passed", "tests_failed", "timed_out", "denied", "unsupported", "rejected",
+    "tests_passed", "tests_failed", "timed_out", "denied", "unsupported", "rejected", "escalated",
 })
 
 _SUMMARY = re.compile(

@@ -5,6 +5,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
 
 from codeforge.agents.schemas import (
+    TriageOutput,
     CodeOutput, Param, RepairOutput, Requirements, RouterOutput, TestsOutput,
 )
 from codeforge.config import Settings
@@ -59,7 +60,9 @@ class SpyRunner:
 def _script(codes, repairs=(), tests=TESTS):
     return {RouterOutput: [RouterOutput(kind="python_function")], Requirements: [REQ],
             CodeOutput: [c if isinstance(c, Exception) else CodeOutput(code=c) for c in codes],
-            TestsOutput: [TestsOutput(tests=tests)], RepairOutput: list(repairs) or [None]}
+            TestsOutput: [TestsOutput(tests=tests)], RepairOutput: list(repairs) or [None],
+            TriageOutput: [TriageOutput(language="en", sentiment="calm", urgency="low",
+                                        wants_human=False)]}
 
 
 @pytest.fixture
@@ -101,7 +104,11 @@ def test_two_failed_repairs_report_the_real_failure_and_open_a_p3_ticket(make):
     assert "Repairs:      2 of 2 tried" in final["report"]
     assert "TESTS FAILED" in final["report"]
     assert final["ticket_id"]
-    assert [t.reason for t in store.list_tickets()] == ["P3: two failed repairs"]
+    (ticket,) = store.list_tickets()  # R3 escalation rule: second failed Repair attempt
+    assert (ticket.priority, ticket.sla_hours, ticket.reason) == ("P3", 24, "2 failed Repair attempts")
+    assert ticket.ticket_id == final["ticket_id"]
+    assert "last failing test: test_solution.py::" in ticket.handoff_note
+    assert "P3, SLA 24 h" in final["report"]
 
 
 def test_repair_that_deletes_a_failing_test_is_rejected_and_counted(make):

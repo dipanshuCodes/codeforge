@@ -58,7 +58,8 @@ _Avoid_: idempotency key (ambiguous: there are two keys)
 
 **Final outcome**:
 The settled result of a Run: tests passed, tests failed, timed out, denied, unsupported, or
-rejected by the approver. A Transient failure is not a Final outcome.
+rejected by the approver, or escalated (a P1 Ticket handed the Run to a human with nothing
+generated). A Transient failure is not a Final outcome.
 
 **Transient failure**:
 A Run that ended because CodeForge could not serve it at that moment, for example "cannot

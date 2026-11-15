@@ -12,19 +12,25 @@ from langgraph.types import interrupt
 
 from codeforge.agents.codegen import generate_code
 from codeforge.agents.repair import repair_code, repair_code_and_tests
+from codeforge.agents.handoff import summarize_handoff
 from codeforge.agents.requirements import extract_requirements
 from codeforge.agents.router import classify
-from codeforge.agents.schemas import Requirements
+from codeforge.agents.schemas import Requirements, TriageOutput
 from codeforge.agents.testgen import generate_tests
+from codeforge.agents.triage import triage as triage_request
 from codeforge.config import Settings
 from codeforge.graph.state import RUN_DEFAULTS, RunState
 from codeforge.llm.caller import ModelCallError, ModelOutputError, ModelUnavailableError, StructuredCaller
+from codeforge.policy.escalation import (
+    Signals, decide_escalation, failed_repairs_in_run, opens_ticket, skips_generation,
+)
 from codeforge.policy.code_policy import defines_function, evaluate_code_policy, strictest
 from codeforge.policy.repair import evaluate_repair
 from codeforge.policy.quota import NOT_COUNTED, quota_allows, quota_window_start
 from codeforge.policy.resilience import degrade_verdict, worst_tier
 from codeforge.policy.templates import pick_template
 from codeforge.privacy.masking import mask
+from codeforge.reporting.handoff import HandoffNote, last_failing_test
 from codeforge.reporting.outcome import outcome_from_execution
 from codeforge.reporting.report import ReportInput, render_report
 from codeforge.runs.keys import execution_key, request_key
@@ -32,6 +38,8 @@ from codeforge.runs.store import RunRecord, RunStore
 from codeforge.sandbox.runner import ExecutionResult
 
 APPROVE_WORD = "approve"
+# Triage unavailable: assume calm so the Run is not blocked (R5 still tickets an outage).
+CALM = TriageOutput(language="en", sentiment="calm", urgency="low", wants_human=False)
 
 
 class Nodes:
@@ -41,11 +49,13 @@ class Nodes:
         caller: StructuredCaller,
         store: RunStore,
         run_tests: Callable[..., ExecutionResult],
+        summary_caller: StructuredCaller | None = None,
     ) -> None:
         self.settings = settings
         self.caller = caller
         self.store = store
         self.run_tests = run_tests
+        self.summary_caller = summary_caller  # small model for the Handoff note; None = absent
 
     # --- ingress / triage / escalation -------------------------------------------------
 
@@ -80,13 +90,57 @@ class Nodes:
         return update
 
     def triage(self, state: RunState) -> dict[str, Any]:
-        # L1 stub (R3 adds the model call).
-        return {"triage": {"language": "en", "sentiment": "calm", "urgency": "low",
-                           "wants_human": False}}
+        try:
+            out = triage_request(self.caller, state["request"])  # already masked at ingress
+        except ModelCallError:
+            out = CALM
+        unhappy = state.get("unhappy_turns", 0) + (out.sentiment == "mildly_unhappy")
+        return {"triage": out.model_dump(), "unhappy_turns": unhappy}
 
     def escalation(self, state: RunState) -> dict[str, Any]:
-        # L1 stub (R3 adds the rules, Tickets and the P1 short-cut).
-        return {"escalation": None}
+        update = self._escalate(state)
+        if skips_generation(update.get("escalation")):
+            update["outcome"] = "escalated"  # P1: a human takes over, nothing is generated
+        return update
+
+    def _escalate(self, state: RunState, **counts: int) -> dict[str, Any]:
+        """Decide from triage + Conversation counters; open a Ticket if the rules say so."""
+        t = state.get("triage") or {}
+        signals = Signals(
+            wants_human=bool(t.get("wants_human")), sentiment=t.get("sentiment", "calm"),
+            urgency=t.get("urgency", "low"),
+            unhappy_turns=counts.get("unhappy_turns", state.get("unhappy_turns", 0)),
+            denials=counts.get("denials", state.get("denials", 0)),
+            failed_repairs=counts.get("failed_repairs", state.get("failed_repairs", 0)),
+        )
+        esc = decide_escalation(signals)
+        if esc is None:
+            return {}
+        if not opens_ticket(esc.priority, state.get("conversation_ticket_priority")):
+            if not skips_generation(esc.priority):
+                return {}
+            # A repeated P1: point at the Ticket already open for this Conversation.
+            return {"escalation": esc.priority, "ticket_id": state.get("conversation_ticket_id"),
+                    "ticket_priority": state.get("conversation_ticket_priority"),
+                    "ticket_sla_hours": esc.sla_hours}
+        execution = state.get("execution") or {}
+        note = HandoffNote(priority=esc.priority, sla_hours=esc.sla_hours, reason=esc.reason,
+                           request=state["request"], attempts=state.get("attempts", 0),
+                           last_failing_test=last_failing_test(execution.get("output")))
+        if self.summary_caller is not None:
+            try:
+                summary = summarize_handoff(self.summary_caller, note).summary
+                # Re-validated (not model_copy) so the AI summary is masked again.
+                note = HandoffNote(**{**note.model_dump(), "ai_summary": summary})
+            except ModelCallError:
+                pass  # advisory only: absent during an outage
+        ticket_id = self.store.add_ticket(state["run_id"], esc.reason, None, state["request"],
+                                          priority=esc.priority, sla_hours=esc.sla_hours,
+                                          handoff_note=note.render())
+        return {"escalation": esc.priority, "ticket_id": ticket_id,
+                "ticket_priority": esc.priority, "ticket_sla_hours": esc.sla_hours,
+                "conversation_ticket_id": ticket_id,
+                "conversation_ticket_priority": esc.priority}
 
     # --- model nodes ---------------------------------------------------------------------
 
@@ -107,7 +161,8 @@ class Nodes:
                     "code": template.code, "tests": template.tests}
         ticket_id = self.store.add_ticket(state["run_id"], "model outage, no template match",
                                           "template", state["request"])
-        return {"outcome": "cannot_generate", "serving_tier": "template", "ticket_id": ticket_id}
+        return {"outcome": "cannot_generate", "serving_tier": "template", "ticket_id": ticket_id,
+                "ticket_priority": None, "ticket_sla_hours": None}
 
     def router(self, state: RunState) -> dict[str, Any]:
         try:
@@ -250,12 +305,17 @@ class Nodes:
         outcome = state.get("outcome") or outcome_from_execution(
             execution.get("exit_code"), bool(execution.get("timed_out")), execution.get("output") or ""
         )
-        ticket_id = state.get("ticket_id")
         tried, budget = state.get("repairs_tried", 0), self.settings.max_repair_attempts
-        if outcome == "tests_failed" and budget > 0 and tried >= budget and not ticket_id:
-            # Every Repair attempt used and the real pytest result is still not a pass.
-            ticket_id = self.store.add_ticket(state["run_id"], "P3: two failed repairs",
-                                              state.get("serving_tier"), state["request"])
+        # This Run's denial / failed Repair attempts count now, so the second one escalates here.
+        counts = {"denials": state.get("denials", 0) + (outcome == "denied"),
+                  "failed_repairs": state.get("failed_repairs", 0)
+                  + failed_repairs_in_run(tried, outcome == "tests_passed")}
+        escalated: dict[str, Any] = {}
+        if outcome != "escalated" and (counts["denials"] != state.get("denials", 0)
+                                       or counts["failed_repairs"] != state.get("failed_repairs", 0)):
+            escalated = self._escalate(state, **counts)
+            state = {**state, **escalated}
+        ticket_id = state.get("ticket_id")
         tier = state.get("serving_tier") if state.get("code") is not None else None
         if ticket_id:
             tier = state.get("serving_tier")  # name the tier even when nothing was generated
@@ -268,7 +328,8 @@ class Nodes:
             approved=state.get("approved"), code=state.get("code"), tests=state.get("tests"),
             exit_code=execution.get("exit_code"), timeout_s=self.settings.sandbox_timeout_s,
             output=execution.get("output"), run_quota=self.settings.run_quota,
-            ticket_id=ticket_id,
+            ticket_id=ticket_id, ticket_priority=state.get("ticket_priority"),
+            ticket_sla_hours=state.get("ticket_sla_hours"),
             execution_reused=bool(execution.get("reused")),
             repairs_tried=tried, max_repairs=budget, repair_notes=state.get("repair_notes", []),
         ))
@@ -281,4 +342,4 @@ class Nodes:
             output=execution.get("output"), serving_tier=tier, report=report,
             request_key=state.get("request_key"),
         ))
-        return {"outcome": outcome, "report": report, "ticket_id": ticket_id}
+        return {**escalated, **counts, "outcome": outcome, "report": report}

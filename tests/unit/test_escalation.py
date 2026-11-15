@@ -91,14 +91,14 @@ def test_opens_ticket_only_when_new_or_stricter(new, already, expected):
     assert opens_ticket(new, already) is expected
 
 
-@pytest.mark.parametrize("attempts,passed,expected", [
-    (0, False, 0),  # nothing ran (denied, rejected, P1)
-    (1, False, 0),  # the first Execution is not a Repair attempt
-    (1, True, 0),
-    (2, False, 1),
-    (3, False, 2),
-    (3, True, 1),   # repair 1 failed, repair 2 passed
+@pytest.mark.parametrize("repairs_tried,passed,expected", [
+    (0, False, 0),  # no repair (denied, rejected, P1, or first Execution failed with no budget)
+    (0, True, 0),
+    (1, False, 1),
+    (2, False, 2),  # both repairs failed (or were rejected)
+    (1, True, 0),   # repair 1 worked
+    (2, True, 1),   # repair 1 failed, repair 2 worked
 ])
-def test_failed_repairs_in_run(attempts, passed, expected):
+def test_failed_repairs_in_run(repairs_tried, passed, expected):
     from codeforge.policy.escalation import failed_repairs_in_run
-    assert failed_repairs_in_run(attempts, passed) == expected
+    assert failed_repairs_in_run(repairs_tried, passed) == expected

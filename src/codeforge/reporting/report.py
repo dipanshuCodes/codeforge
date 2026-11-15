@@ -23,6 +23,8 @@ class ReportInput(BaseModel):
     timeout_s: float
     output: str | None
     ticket_id: str | None = None
+    ticket_priority: str | None = None
+    ticket_sla_hours: int | None = None
     run_quota: int | None = None
     execution_reused: bool = False
     repairs_tried: int = 0
@@ -46,6 +48,7 @@ def _headline(r: ReportInput) -> str:
         "unsupported": "NOT SUPPORTED",
         "cannot_generate": "CANNOT GENERATE NOW",
         "quota_exceeded": f"QUOTA REACHED: {r.run_quota} Requests per day",
+        "escalated": "HANDED TO A HUMAN (nothing generated)",
     }[r.outcome]
 
 
@@ -67,7 +70,10 @@ def render_report(r: ReportInput) -> str:
     if r.serving_tier:
         model = f" ({r.model})" if r.model else ""
         lines.append(f"Serving tier: {r.serving_tier}{model}")
-    if r.ticket_id:
+    if r.ticket_id and r.ticket_priority:
+        lines.append(f"Ticket:       {r.ticket_id[:8]} · {r.ticket_priority}, "
+                     f"SLA {r.ticket_sla_hours} h")
+    elif r.ticket_id:
         lines.append(f"Ticket:       {r.ticket_id[:8]} opened")
     if r.verdict:
         lines.append(f"Policy:       {_policy_line(r)}")

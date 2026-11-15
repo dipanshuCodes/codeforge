@@ -55,7 +55,7 @@ def opens_ticket(priority: str, already_opened: str | None) -> bool:
     return already_opened is None or _RANK[priority] < _RANK[already_opened]
 
 
-def failed_repairs_in_run(attempts: int, passed: bool) -> int:
-    """Failed Repair attempts in one Run. `attempts` counts Executions; the first is no repair."""
-    repairs = max(0, attempts - 1)
-    return max(0, repairs - 1) if passed else repairs
+def failed_repairs_in_run(repairs_tried: int, passed: bool) -> int:
+    """Failed Repair attempts in one Run. A rejected repair counts as tried; if the Run passed,
+    the last repair is the one that worked."""
+    return max(0, repairs_tried - 1) if passed else repairs_tried

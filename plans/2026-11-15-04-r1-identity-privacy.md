@@ -28,3 +28,9 @@ Issue: dipanshuCodes/codeforge#4 · Owner: Siyahul · Branch: `feat/r1-identity-
 - Golden cases (identity, isolation, quota) are written as graph tests now and move into
   `evals/golden_set.json` with R6, which does not exist yet.
 - The README "developers only" warning stays until R2 is done too.
+
+## Decisions
+
+- 2026-11-15: Aadhaar stays "12 digits starting 2–9". `1234 5678 9012` is not masked; no real
+  Aadhaar starts with 0 or 1, and widening it would mask harmless 12-digit numbers.
+  `plans/queries.md` updated to match.

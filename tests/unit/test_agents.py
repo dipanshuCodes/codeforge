@@ -94,3 +94,20 @@ def test_repair_bad_output_propagates():
     caller = FakeCaller({CodeOutput: ModelOutputError("bad")})
     with pytest.raises(ModelOutputError):
         repair_code(caller, REQ, "c", "t", "out")
+
+
+def test_triage_sends_masked_request_and_has_no_task_type():
+    from codeforge.agents.schemas import TriageOutput
+    from codeforge.agents.triage import triage
+    out = TriageOutput(language="en", sentiment="angry", urgency="high", wants_human=True)
+    caller = FakeCaller({TriageOutput: out})
+    assert triage(caller, "get me a human [SECRET]") == out
+    assert "get me a human [SECRET]" in caller.calls[0][2]
+    assert set(TriageOutput.model_fields) == {"language", "sentiment", "urgency", "wants_human"}
+
+
+def test_triage_rejects_unknown_sentiment():
+    from pydantic import ValidationError
+    from codeforge.agents.schemas import TriageOutput
+    with pytest.raises(ValidationError):
+        TriageOutput(language="en", sentiment="furious", urgency="low", wants_human=False)

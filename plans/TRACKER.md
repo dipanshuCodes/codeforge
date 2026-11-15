@@ -22,8 +22,8 @@ Dashed boxes and edges don't exist in code yet. Recolour a box when its phase it
 flowchart TD
     START([Console: python -m codeforge]) --> ingress
 
-    ingress["<b>ingress</b><br/>config identity, new Run, reset fields<br/>mask = pass-through · R1"]
-    quota["Run quota · R1"]:::todo
+    ingress["<b>ingress</b><br/>mask secrets/PII first · R1<br/>config identity, new Run, reset fields"]:::built
+    quota["Run quota · R1<br/>per User per UTC day, before any model call"]:::built
     reqkey["Request key lookup · R2"]:::todo
     triage["<b>triage</b><br/>fixed: calm / low / no human · R3"]:::stub
     escalation["<b>escalation</b><br/>always none · R3"]:::stub
@@ -42,8 +42,9 @@ flowchart TD
     ui["Gradio UI · Neha"]:::todo
     gate["Golden gate + CI · R6"]:::todo
 
-    ingress --> triage --> escalation --> router
-    ingress -.-> quota -.-> reqkey -.-> triage
+    ingress --> quota --> triage --> escalation --> router
+    quota -- "over limit → quota_exceeded" --> report
+    quota -.-> reqkey -.-> triage
     escalation -. "P1 · R3" .-> ticket -.-> DONE
     router -- "sql_query / other" --> report
     router -- python_function --> requirements --> codegen --> testgen --> policy
@@ -77,7 +78,7 @@ against Groq. Next: L1 live check and commit, then R1 / R2 / R6.
 |---|---|---|---|---|
 | 1 | Brainstorm and scope | Dipanshu | done | [01 problem statement](2026-11-15-01-problem-statement-alignment.md) |
 | 2 | Level 1 pipeline | Dipanshu | in progress (code + unit tests done; live check open) | [02 node actions](2026-11-15-02-l1-node-actions.md), [03 L1 plan](2026-11-15-03-l1-pipeline.md) |
-| 3a | R1 Identity and privacy | Siyahul | todo | — |
+| 3a | R1 Identity and privacy | Siyahul | in progress | [plan](2026-11-15-04-r1-identity-privacy.md) · branch `feat/r1-identity-privacy` |
 | 3b | R2 Safe execution | Siyahul | todo | — |
 | 3c | R6 Evals as a gate | Siyahul | todo | — |
 | 3d | Repair loop (after R1/R2/R6 green) | — | todo | — |
@@ -124,12 +125,12 @@ Plan: [2026-11-15-03-l1-pipeline.md](2026-11-15-03-l1-pipeline.md).
 
 | Item | Status | Evidence |
 |---|---|---|
-| Masking at ingress in order: `[SECRET]` (`sk-…`, `gsk_…`, 16+), `[EMAIL]`, `[CARD]` (Luhn), `[AADHAAR]`, `[PHONE]` | todo | |
-| One unit test per mask, plus must-not-mask: `2432902008176640000`, `1234567890`, `2024`, `fibonacci(30)` | todo | |
-| Masked text everywhere: prompts, logs, run records, UI echo | todo | |
-| Run quota per user, enforced before generation | todo | |
-| "I'm an instructor" in a message changes nothing | todo | |
-| User A can't read user B's runs; missing = not yours | done in L1 store; golden case todo | `test_run_store.py` |
+| Masking at ingress in order: `[SECRET]` (`sk-…`, `gsk_…`, 16+), `[EMAIL]`, `[CARD]` (Luhn), `[AADHAAR]`, `[PHONE]` | done | `privacy/masking.py`; `tests/unit/test_masking.py` |
+| One unit test per mask, plus must-not-mask: `2432902008176640000`, `1234567890`, `2024`, `fibonacci(30)` | done | `tests/unit/test_masking.py` (25 cases) |
+| Masked text everywhere: prompts, logs, run records, UI echo | done (no log lines exist yet; console echoes `request`, which is masked) | `test_ingress_r1.py::test_pasted_key_and_aadhaar_are_masked_in_prompts_run_and_db` (checks the SQLite file bytes) |
+| Run quota per user, enforced before generation | done (golden case → R6) | `policy/quota.py`, `CODEFORGE_RUN_QUOTA`; `test_quota.py`, `test_ingress_r1.py::test_quota_refuses_before_any_model_call` |
+| "I'm an instructor" in a message changes nothing | done (golden case → R6) | `test_ingress_r1.py::test_identity_claims_in_the_message_change_nothing` |
+| User A can't read user B's runs; missing = not yours | done; graph-level test added, golden case → R6 | `test_run_store.py`, `test_ingress_r1.py::test_user_b_cannot_read_user_a_run_and_missing_looks_the_same` |
 | README warning ("developers only until R1/R2") removed once R1 + R2 are done | todo | |
 
 ## 3b. R2 Safe execution — Siyahul

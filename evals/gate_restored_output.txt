@@ -1,0 +1,5 @@
+$ # restored: src/codeforge/policy/code_policy.py back to the committed allowlist
+$ python -m pytest tests/test_golden_gate.py -q
+.....................ssss                                                [100%]
+21 passed, 4 skipped in 6.82s
+exit code: 0

@@ -92,3 +92,38 @@ def test_approval_display_escapes_control_characters(tmp_path):
     assert "\r" not in out and "\x1b" not in out and "\x07" not in out
     assert "\\r" in out and "\\x1b" in out and "\\x07" in out
     assert "\n\treturn" in out  # newlines and tabs are kept
+
+
+def _run_with_store(tmp_path, inputs):
+    settings = Settings(user_id="u-alice", role="student", db_path=str(tmp_path / "r.db"),
+                        sandbox_timeout_s=5)
+    caller = FakeCaller({RouterOutput: RouterOutput(kind="python_function"), Requirements: REQ,
+                         CodeOutput: CodeOutput(code=CODE), TestsOutput: TestsOutput(tests=TESTS)})
+    store = RunStore(settings)
+    graph = build_graph(settings, caller, store, checkpointer=MemorySaver())
+    answers, printed = iter(inputs), []
+
+    def input_fn(prompt):
+        try:
+            return next(answers)
+        except StopIteration:
+            raise EOFError
+
+    run_console(graph, input_fn=input_fn, print_fn=printed.append, conversation_id="c1",
+                store=store)
+    return "\n".join(printed), store
+
+
+def test_bad_stores_feedback_on_the_last_run(tmp_path):
+    out, store = _run_with_store(tmp_path, ["palindrome please", "approve", "/bad wrong idea"])
+    run_id = store.list_mine()[0].run_id
+    assert "Feedback saved" in out
+    fid = out.split("Feedback saved: ")[1].split()[0]
+    fb = store.get_feedback(fid)
+    assert fb.run_id == run_id and fb.reason == "wrong idea"
+
+
+def test_bad_before_any_run_stores_nothing(tmp_path):
+    out, _ = _run_with_store(tmp_path, ["/bad"])
+    assert "No Run yet" in out
+    assert "You (masked)" not in out

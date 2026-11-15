@@ -75,7 +75,8 @@ class Nodes:
                   "request_key": key}
         if not allowed:
             update["outcome"] = "quota_exceeded"
-        elif (earlier := self.store.find_final_run(key)) is not None:
+        elif (self.settings.duplicate_request_lookup
+              and (earlier := self.store.find_final_run(key)) is not None):
             # Duplicate Request: answer with the stored Run; nothing is generated or run.
             report = (f"Duplicate Request: same as Run {earlier.run_id[:6]}; not run again.\n"
                       + (earlier.report or ""))
@@ -219,8 +220,11 @@ class Nodes:
 
     def policy(self, state: RunState) -> dict[str, Any]:
         decision = strictest(evaluate_code_policy(state["code"]), evaluate_code_policy(state["tests"]))
+        raw = decision.verdict
+        if self.settings.auto_approve and raw == "needs_approval":
+            raw = "allow"  # TEMP: the sandbox and pytest result decide; deny is untouched
         # A degraded tier never auto-approves (fail closed).
-        verdict = degrade_verdict(decision.verdict, state.get("serving_tier"))
+        verdict = degrade_verdict(raw, state.get("serving_tier"))
         update: dict[str, Any] = {"verdict": verdict, "reasons": decision.reasons}
         if decision.verdict == "deny":
             update["outcome"] = "denied"

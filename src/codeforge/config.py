@@ -20,6 +20,8 @@ ENV_KEYS: tuple[str, ...] = (
     "CODEFORGE_ROLE",
     "CODEFORGE_DB_PATH",
     "CODEFORGE_RUN_QUOTA",
+    "CODEFORGE_DUPLICATE_REQUEST_LOOKUP",
+    "CODEFORGE_AUTO_APPROVE",
     "CODEFORGE_CHAOS_RATE",
     "CODEFORGE_CHAOS_SEED",
     "CODEFORGE_PRIMARY_MODEL",
@@ -58,6 +60,11 @@ class Settings(BaseModel):
     chaos_rate: float = 0.0  # share of model calls failed on purpose (R5); 0 = off
     chaos_seed: int = 0
     run_quota: int = 5  # Requests per User per day (R1 demo User: 5, chaos-run User: 25)
+    # False = a repeated Request is processed again instead of returning the stored Run.
+    duplicate_request_lookup: bool = True
+    # TEMP (local use): true = a `needs_approval` verdict runs without asking; the pytest result
+    # decides. `deny` still refuses, the sandbox is unchanged, and a degraded tier still asks.
+    auto_approve: bool = False
 
 
 def load_settings(env: Mapping[str, str] = os.environ) -> Settings:
@@ -76,6 +83,16 @@ def load_settings(env: Mapping[str, str] = os.environ) -> Settings:
         if not quota.isdigit() or int(quota) < 1:
             raise ConfigError("CODEFORGE_RUN_QUOTA must be a positive whole number")
         overrides["run_quota"] = int(quota)
+    dup = env.get("CODEFORGE_DUPLICATE_REQUEST_LOOKUP", "").strip().lower()
+    if dup:
+        if dup not in ("true", "false"):
+            raise ConfigError("CODEFORGE_DUPLICATE_REQUEST_LOOKUP must be true or false")
+        overrides["duplicate_request_lookup"] = dup == "true"
+    auto = env.get("CODEFORGE_AUTO_APPROVE", "").strip().lower()
+    if auto:
+        if auto not in ("true", "false"):
+            raise ConfigError("CODEFORGE_AUTO_APPROVE must be true or false")
+        overrides["auto_approve"] = auto == "true"
     rate = env.get("CODEFORGE_CHAOS_RATE", "").strip()
     if rate:
         try:

@@ -127,3 +127,18 @@ def test_bad_before_any_run_stores_nothing(tmp_path):
     out, _ = _run_with_store(tmp_path, ["/bad"])
     assert "No Run yet" in out
     assert "You (masked)" not in out
+
+
+def test_auto_approve_runs_risky_code_without_prompt(tmp_path):
+    settings = Settings(user_id="u-alice", role="student", db_path=str(tmp_path / "r.db"),
+                        sandbox_timeout_s=5, auto_approve=True)
+    caller = FakeCaller({RouterOutput: RouterOutput(kind="python_function"), Requirements: REQ,
+                         CodeOutput: CodeOutput(code=CODE), TestsOutput: TestsOutput(tests=TESTS)})
+    graph = build_graph(settings, caller, RunStore(settings), checkpointer=MemorySaver())
+    printed: list[str] = []
+    answers = iter(["palindrome please", "/quit"])
+    run_console(graph, input_fn=lambda p: next(answers), print_fn=printed.append,
+                conversation_id="c1")
+    out = "\n".join(printed)
+    assert "Type 'approve'" not in out
+    assert "TESTS PASSED" in out

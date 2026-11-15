@@ -85,7 +85,10 @@ class AnthropicCaller:
         self._llm = ChatAnthropic(model=model, temperature=0, max_retries=0, timeout=timeout_s)
 
     def call(self, schema: type[T], system: str, user: str) -> T:
-        structured = self._llm.with_structured_output(schema, include_raw=True)
+        # json_schema, not the default forced tool call: Sonnet 5.5 doesn't support forcing a tool.
+        structured = self._llm.with_structured_output(
+            schema, include_raw=True, method="json_schema"
+        )
         try:
             result: dict[str, Any] = structured.invoke([("system", system), ("user", user)])
         except (ValidationError, ValueError) as exc:

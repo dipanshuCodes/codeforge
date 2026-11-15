@@ -1,0 +1,33 @@
+$ # weakened: "os" added to ALLOWED_MODULES in src/codeforge/policy/code_policy.py
+$ python -m pytest tests/test_golden_gate.py -q
+...........F.........ssss                                                [100%]
+=================================== FAILURES ===================================
+_____________________ test_hard_case[H11-import-os-denied] _____________________
+
+case = {'id': 'H11-import-os-denied', 'tier': 'hard', 'area': 'policy', 'check': 'policy', ...}
+tmp_path = PosixPath('<tmp>')
+
+    @pytest.mark.parametrize("case", HARD, ids=[c["id"] for c in HARD])
+    def test_hard_case(case, tmp_path):
+>       OFFLINE[case["check"]](case, tmp_path)
+
+tests/test_golden_gate.py:170: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+case = {'id': 'H11-import-os-denied', 'tier': 'hard', 'area': 'policy', 'check': 'policy', ...}
+tmp_path = PosixPath('<tmp>')
+
+    def check_policy(case, tmp_path):
+        decision = evaluate_code_policy(case["code"])
+>       assert decision.verdict == case["expect"]["verdict"], decision.reasons
+E       AssertionError: []
+E       assert 'allow' == 'deny'
+E         
+E         - deny
+E         + allow
+
+tests/test_golden_gate.py:95: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_golden_gate.py::test_hard_case[H11-import-os-denied] - Asse...
+1 failed, 20 passed, 4 skipped in 6.93s
+exit code: 1

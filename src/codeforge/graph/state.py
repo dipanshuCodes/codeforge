@@ -30,6 +30,9 @@ class RunState(TypedDict, total=False):
     report: str | None
     request_key: str
     duplicate_of: str | None
+    repairs_tried: int
+    repair_status: str | None  # proposed | rejected | failed
+    repair_notes: list[str]
 
 
 # Every per-Run field and its fresh value. Ingress returns these so a new Request on the same
@@ -51,4 +54,7 @@ RUN_DEFAULTS: dict[str, Any] = {
     "outcome": None,
     "report": None,
     "duplicate_of": None,
+    "repairs_tried": 0,
+    "repair_status": None,
+    "repair_notes": [],
 }

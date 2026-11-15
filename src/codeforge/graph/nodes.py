@@ -11,6 +11,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.types import interrupt
 
 from codeforge.agents.codegen import generate_code
+from codeforge.agents.repair import repair_code, repair_code_and_tests
 from codeforge.agents.requirements import extract_requirements
 from codeforge.agents.router import classify
 from codeforge.agents.schemas import Requirements
@@ -19,6 +20,7 @@ from codeforge.config import Settings
 from codeforge.graph.state import RUN_DEFAULTS, RunState
 from codeforge.llm.caller import ModelCallError, ModelOutputError, ModelUnavailableError, StructuredCaller
 from codeforge.policy.code_policy import defines_function, evaluate_code_policy, strictest
+from codeforge.policy.repair import evaluate_repair
 from codeforge.policy.quota import NOT_COUNTED, quota_allows, quota_window_start
 from codeforge.policy.resilience import degrade_verdict, worst_tier
 from codeforge.policy.templates import pick_template
@@ -167,7 +169,17 @@ class Nodes:
         update: dict[str, Any] = {"verdict": verdict, "reasons": decision.reasons}
         if decision.verdict == "deny":
             update["outcome"] = "denied"
+            self._note_after_repair(state, update, "denied by the policy gate")
         return update
+
+    @staticmethod
+    def _note_after_repair(state: RunState, update: dict[str, Any], what: str) -> None:
+        """A repair that never ran must not look like a fresh result: say where the shown
+        pytest result came from."""
+        n = state.get("repairs_tried", 0)
+        if n:
+            update["repair_notes"] = [*state.get("repair_notes", []),
+                                      f"repair {n}: {what}; the pytest result is from the previous Execution"]
 
     def approval(self, state: RunState) -> dict[str, Any]:
         answer = interrupt({
@@ -180,7 +192,9 @@ class Nodes:
         # Approval is an explicit act: only the exact word counts; anything else rejects.
         approved = isinstance(answer, str) and answer.strip().lower() == APPROVE_WORD
         if not approved:
-            return {"approved": False, "outcome": "rejected"}
+            update = {"approved": False, "outcome": "rejected"}
+            self._note_after_repair(state, update, "rejected by the approver")
+            return update
         return {"approved": True}
 
     def execute(self, state: RunState) -> dict[str, Any]:
@@ -198,6 +212,37 @@ class Nodes:
             self.store.save_execution(key, execution)
         return {"execution": execution, "attempts": state.get("attempts", 0) + 1}
 
+    def repair(self, state: RunState) -> dict[str, Any]:
+        """One Repair attempt: the agent proposes, `evaluate_repair` decides. A proposal that
+        passes goes back through the policy gate; a rejected one still counts as an attempt."""
+        attempt = state.get("repairs_tried", 0) + 1
+        notes = list(state.get("repair_notes", []))
+        req = Requirements.model_validate(state["requirements"])
+        code, tests = state["code"], state["tests"]
+        output = (state.get("execution") or {}).get("output") or ""
+        try:
+            if attempt == 1:
+                new_code, new_tests = repair_code(self.caller, req, code, tests, output).code, tests
+            else:
+                out = repair_code_and_tests(self.caller, req, code, tests, output)
+                new_code, new_tests = out.code, out.tests
+        except ModelCallError:
+            notes.append(f"repair {attempt}: the model gave no usable repair")
+            return {"repairs_tried": attempt, "repair_status": "failed", "repair_notes": notes}
+        decision = evaluate_repair(attempt, code, tests, new_code, new_tests)
+        reasons = list(decision.reasons)
+        if decision.accepted and not defines_function(new_code, req.function_name):
+            reasons.append(f"repair does not define `{req.function_name}`")
+        if reasons:
+            notes.append(f"repair {attempt}: rejected: {'; '.join(reasons)}")
+            return {"repairs_tried": attempt, "repair_status": "rejected", "repair_notes": notes,
+                    "serving_tier": self._tier(state)}
+        # Fresh gate decision for the repaired files; nothing carries over from the last one.
+        return {"code": new_code, "tests": new_tests, "repairs_tried": attempt,
+                "repair_status": "proposed", "repair_notes": notes,
+                "verdict": None, "reasons": [], "approved": None,
+                "serving_tier": self._tier(state)}
+
     # --- report --------------------------------------------------------------------------
 
     def report(self, state: RunState) -> dict[str, Any]:
@@ -205,8 +250,14 @@ class Nodes:
         outcome = state.get("outcome") or outcome_from_execution(
             execution.get("exit_code"), bool(execution.get("timed_out")), execution.get("output") or ""
         )
+        ticket_id = state.get("ticket_id")
+        tried, budget = state.get("repairs_tried", 0), self.settings.max_repair_attempts
+        if outcome == "tests_failed" and budget > 0 and tried >= budget and not ticket_id:
+            # Every Repair attempt used and the real pytest result is still not a pass.
+            ticket_id = self.store.add_ticket(state["run_id"], "P3: two failed repairs",
+                                              state.get("serving_tier"), state["request"])
         tier = state.get("serving_tier") if state.get("code") is not None else None
-        if state.get("ticket_id"):
+        if ticket_id:
             tier = state.get("serving_tier")  # name the tier even when nothing was generated
         model = {"primary": self.settings.large_model,
                  "fallback": self.settings.small_model}.get(tier or "")
@@ -217,8 +268,9 @@ class Nodes:
             approved=state.get("approved"), code=state.get("code"), tests=state.get("tests"),
             exit_code=execution.get("exit_code"), timeout_s=self.settings.sandbox_timeout_s,
             output=execution.get("output"), run_quota=self.settings.run_quota,
-            ticket_id=state.get("ticket_id"),
+            ticket_id=ticket_id,
             execution_reused=bool(execution.get("reused")),
+            repairs_tried=tried, max_repairs=budget, repair_notes=state.get("repair_notes", []),
         ))
         self.store.save(RunRecord(
             run_id=state["run_id"], conversation_id=state["conversation_id"],
@@ -229,4 +281,4 @@ class Nodes:
             output=execution.get("output"), serving_tier=tier, report=report,
             request_key=state.get("request_key"),
         ))
-        return {"outcome": outcome, "report": report}
+        return {"outcome": outcome, "report": report, "ticket_id": ticket_id}

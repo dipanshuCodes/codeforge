@@ -55,3 +55,42 @@ def test_model_output_error_propagates():
 def test_fake_caller_missing_schema_is_model_output_error():
     with pytest.raises(ModelOutputError):
         classify(FakeCaller({}), "anything")
+
+
+# --- repair agent -------------------------------------------------------------------------
+
+FAKE_KEY = "sk-" + "a1b2" * 6  # obviously fake; shaped like a real key so masking applies
+
+
+def test_repair_code_sends_masked_pytest_output_and_current_files():
+    from codeforge.agents.repair import repair_code
+
+    caller = FakeCaller({CodeOutput: CodeOutput(code="def is_palindrome(s): return True")})
+    out = repair_code(caller, REQ, "OLD CODE", "OLD TESTS", f"FAILED test_x leaked {FAKE_KEY}")
+    assert out.code.startswith("def is_palindrome")
+    schema, system, user = caller.calls[0]
+    assert schema is CodeOutput
+    assert "OLD CODE" in user and "OLD TESTS" in user
+    assert FAKE_KEY not in user and "[SECRET]" in user
+    assert "do not change the tests" in system.lower()
+
+
+def test_repair_code_and_tests_may_change_tests_but_not_weaken_them():
+    from codeforge.agents.repair import repair_code_and_tests
+    from codeforge.agents.schemas import RepairOutput
+
+    caller = FakeCaller({RepairOutput: RepairOutput(code="C2", tests="T2")})
+    out = repair_code_and_tests(caller, REQ, "OLD CODE", "OLD TESTS", f"output {FAKE_KEY}")
+    assert (out.code, out.tests) == ("C2", "T2")
+    schema, system, user = caller.calls[0]
+    assert schema is RepairOutput
+    assert FAKE_KEY not in user
+    assert "fewer tests" in system.lower()
+
+
+def test_repair_bad_output_propagates():
+    from codeforge.agents.repair import repair_code
+
+    caller = FakeCaller({CodeOutput: ModelOutputError("bad")})
+    with pytest.raises(ModelOutputError):
+        repair_code(caller, REQ, "c", "t", "out")

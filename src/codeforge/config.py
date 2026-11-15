@@ -23,6 +23,8 @@ ENV_KEYS: tuple[str, ...] = (
     "CODEFORGE_CHAOS_RATE",
     "CODEFORGE_CHAOS_SEED",
     "GROQ_API_KEY",  # read by langchain-groq, never by our code
+    "GOOGLE_API_KEY",  # not read by our code yet: reserved for a possible Gemini model
+    "ANTHROPIC_API_KEY",  # not read by our code yet: reserved for a possible Claude model
 )
 # Later files are weaker: values already set (shell, or an earlier file) are kept.
 ENV_FILES: tuple[str, ...] = (".env.local", ".env")
@@ -46,7 +48,7 @@ class Settings(BaseModel):
     sandbox_timeout_s: float = 10.0
     max_output_bytes: int = 10_240
     sandbox_memory_bytes: int = 256 * 1024 * 1024  # enforced on Linux; macOS ignores RLIMIT_AS
-    max_repair_attempts: int = 0
+    max_repair_attempts: int = 2  # 1-3 Executions per Run
     chaos_rate: float = 0.0  # share of model calls failed on purpose (R5); 0 = off
     chaos_seed: int = 0
     run_quota: int = 5  # Requests per User per day (R1 demo User: 5, chaos-run User: 25)

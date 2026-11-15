@@ -238,6 +238,7 @@ Decided 2026-11-15 (full list in `plans/2026-11-15-01-problem-statement-alignmen
 - **Sandbox:** separate process, `python -I`, stripped environment, temp directory, and a network block in Python (audit hook) behind the policy gate. Limits: 10 s timeout (kills the process group), 256 MB memory, first 10 KB of output.
 - **Storage:** a SQLite run store (built-in `sqlite3`) for Runs, keys, quota, Tickets and Feedback. The LangGraph checkpointer stays in memory.
 - **CI:** hard Golden cases run on every push with a fake model. Soft cases run in a separate job, only when the key secret exists.
+- **Code policy, dunders:** dunder names and attributes are no longer denied (`docs/adr/0001-allow-dunder-access-in-code-policy.md`). Known gap: introspection escapes like `().__class__.__bases__[0].__subclasses__()` pass the gate; the sandbox is the remaining defence.
 
 ## Agent skills
 

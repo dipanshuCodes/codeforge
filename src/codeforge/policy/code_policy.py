@@ -3,8 +3,9 @@
 An allowlist, applied to both the generated code and the generated tests:
 - allow: pure standard-library modules, pytest, and the generated `solution` module;
 - needs_approval: file access (`open`, `pathlib`, `io`) and network access;
-- deny: everything else, including dangerous modules, dynamic execution, dunder access,
-  reflection, parse failures and anything not listed.
+- deny: everything else, including dangerous modules, dynamic execution, reflection
+  (getattr/globals/vars, including getattr on a dunder name), parse failures and anything
+  not listed. Plain dunder access (`x.__class__`) is allowed; see docs/adr/0001.
 """
 
 from __future__ import annotations
@@ -116,10 +117,9 @@ def _check(node: ast.AST) -> list[tuple[Verdict, str]]:
             found.append(("deny", f"use of {node.id}"))
         elif node.id == "open":
             found.append(("needs_approval", "open(): file access"))
-        elif _is_dunder(node.id) and node.id != "__name__":
-            found.append(("deny", f"dunder name {node.id}"))
-    elif isinstance(node, ast.Attribute) and _is_dunder(node.attr):
-        found.append(("deny", f"dunder attribute .{node.attr}"))
+        # Dunder names/attributes are deliberately NOT denied (docs/adr/0001): the blanket ban
+        # blocked ordinary generated code. Known risk: introspection escapes such as
+        # ().__class__.__bases__[0].__subclasses__() and f.__globals__ now pass this gate.
     elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name) \
             and node.func.id in REFLECTION_CALLS:
         name = node.args[1] if len(node.args) > 1 else None

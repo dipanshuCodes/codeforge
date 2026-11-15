@@ -84,6 +84,18 @@ class RunStore:
             ).fetchone()
         return _to_record(row) if row else None
 
+    def count_since(self, since_iso: str, not_counted: frozenset[str]) -> int:
+        """Runs of the config User created at or after `since_iso`, excluding `not_counted`
+        outcomes. Runs still in progress (no outcome yet) are counted."""
+        marks = ", ".join("?" for _ in not_counted)
+        excluded = f"AND (outcome IS NULL OR outcome NOT IN ({marks}))" if not_counted else ""
+        with closing(self._connect()) as conn:
+            (n,) = conn.execute(
+                f"SELECT COUNT(*) FROM runs WHERE user_id = ? AND created_at >= ? {excluded}",
+                (self._user_id, since_iso, *sorted(not_counted)),
+            ).fetchone()
+        return n
+
     def list_mine(self) -> list[RunRecord]:
         with closing(self._connect()) as conn:
             rows = conn.execute(

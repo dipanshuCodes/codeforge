@@ -19,6 +19,7 @@ from codeforge.config import Settings
 from codeforge.graph.state import RUN_DEFAULTS, RunState
 from codeforge.llm.caller import ModelCallError, ModelOutputError, StructuredCaller
 from codeforge.policy.code_policy import defines_function, evaluate_code_policy, strictest
+from codeforge.policy.quota import NOT_COUNTED, quota_allows, quota_window_start
 from codeforge.privacy.masking import mask
 from codeforge.reporting.outcome import outcome_from_execution
 from codeforge.reporting.report import ReportInput, render_report
@@ -45,15 +46,23 @@ class Nodes:
     # --- ingress / triage / escalation -------------------------------------------------
 
     def ingress(self, state: RunState, config: RunnableConfig) -> dict[str, Any]:
-        request = mask(state["raw_text"])
+        request = mask(state["raw_text"])  # first, before anything is stored or sent
         run_id = uuid.uuid4().hex
         conversation_id = str(config["configurable"]["thread_id"])
-        created_at = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(timezone.utc)
+        created_at = now.isoformat()
+        # Counted before this Run is saved, so `used` is the Requests already submitted today.
+        used = self.store.count_since(quota_window_start(now).isoformat(), NOT_COUNTED)
+        allowed = quota_allows(used, self.settings.run_quota)
         self.store.save(RunRecord(run_id=run_id, conversation_id=conversation_id,
-                                  created_at=created_at, request=request))
+                                  created_at=created_at, request=request,
+                                  outcome=None if allowed else "quota_exceeded"))
         # raw_text is overwritten with the masked text so the unmasked form isn't checkpointed.
-        return {**RUN_DEFAULTS, "raw_text": request, "request": request, "run_id": run_id,
-                "conversation_id": conversation_id, "created_at": created_at}
+        update = {**RUN_DEFAULTS, "raw_text": request, "request": request, "run_id": run_id,
+                  "conversation_id": conversation_id, "created_at": created_at}
+        if not allowed:
+            update["outcome"] = "quota_exceeded"
+        return update
 
     def triage(self, state: RunState) -> dict[str, Any]:
         # L1 stub (R3 adds the model call).
@@ -148,7 +157,7 @@ class Nodes:
             verdict=state.get("verdict"), reasons=state.get("reasons", []),
             approved=state.get("approved"), code=state.get("code"), tests=state.get("tests"),
             exit_code=execution.get("exit_code"), timeout_s=self.settings.sandbox_timeout_s,
-            output=execution.get("output"),
+            output=execution.get("output"), run_quota=self.settings.run_quota,
         ))
         self.store.save(RunRecord(
             run_id=state["run_id"], conversation_id=state["conversation_id"],

@@ -19,6 +19,7 @@ ENV_KEYS: tuple[str, ...] = (
     "CODEFORGE_USER_ID",
     "CODEFORGE_ROLE",
     "CODEFORGE_DB_PATH",
+    "CODEFORGE_RUN_QUOTA",
     "GROQ_API_KEY",  # read by langchain-groq, never by our code
 )
 # Later files are weaker: values already set (shell, or an earlier file) are kept.
@@ -43,6 +44,7 @@ class Settings(BaseModel):
     sandbox_timeout_s: float = 10.0
     max_output_bytes: int = 10_240
     max_repair_attempts: int = 0
+    run_quota: int = 5  # Requests per User per day (R1 demo User: 5, chaos-run User: 25)
 
 
 def load_settings(env: Mapping[str, str] = os.environ) -> Settings:
@@ -56,6 +58,11 @@ def load_settings(env: Mapping[str, str] = os.environ) -> Settings:
     overrides = {}
     if env.get("CODEFORGE_DB_PATH"):
         overrides["db_path"] = env["CODEFORGE_DB_PATH"]
+    quota = env.get("CODEFORGE_RUN_QUOTA", "").strip()
+    if quota:
+        if not quota.isdigit() or int(quota) < 1:
+            raise ConfigError("CODEFORGE_RUN_QUOTA must be a positive whole number")
+        overrides["run_quota"] = int(quota)
     return Settings(user_id=user_id, role=role, **overrides)
 
 

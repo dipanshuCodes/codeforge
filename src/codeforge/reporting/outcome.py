@@ -13,6 +13,7 @@ Outcome = Literal[
     "rejected",
     "unsupported",
     "cannot_generate",
+    "quota_exceeded",
 ]
 
 _SUMMARY = re.compile(

@@ -27,7 +27,8 @@ It is 11:47 PM, ten minutes before a deadline:
 - **Mandatory:** Level 1 pipeline, R1 identity and privacy, R2 safe execution, R6 evals as a gate.
 - **Chosen levers:** R3 escalation and handoff, R5 resilience.
 - **Bonus:** Gradio chat UI.
-- **Not planned:** R4 cost and latency (only if time remains), R7 SQL agent.
+- **Bonus:** R7 safe SQL agent (instructor role only): read-only SELECTs on a fake in-memory sample database.
+- **Not planned:** R4 cost and latency (only if time remains).
 
 ## How a request flows
 
@@ -40,7 +41,10 @@ flowchart TD
     T -- "no generation" --> P
     D -- "P2 / P3: Ticket, then continue" --> E
     D -- none --> E{Router}
-    E -- sql / other --> U[Not supported]
+    E -- other --> U[Not supported]
+    E -- sql --> Q[SQL agent → SQL policy:<br/>role tables, one SELECT, 100-row clamp]
+    Q -- deny --> R
+    Q -- allow --> QR[Run on in-memory sample DB] --> P
     E -- python --> F[Requirements → Code → Tests]
     F --> G{Policy gate}
     G -- deny --> R[Refuse and log;<br/>2nd denial in a Conversation → P3 Ticket]

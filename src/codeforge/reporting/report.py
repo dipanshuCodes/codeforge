@@ -49,6 +49,8 @@ def _headline(r: ReportInput) -> str:
         "cannot_generate": "CANNOT GENERATE NOW",
         "quota_exceeded": f"QUOTA REACHED: {r.run_quota} Requests per day",
         "escalated": "HANDED TO A HUMAN (nothing generated)",
+        "query_ran": "QUERY RAN (read-only, sample database)",
+        "query_failed": "QUERY STOPPED",
     }[r.outcome]
 
 
@@ -88,7 +90,7 @@ def render_report(r: ReportInput) -> str:
         lines.append(f"Repairs:      {r.repairs_tried} of {r.max_repairs} tried")
         lines.extend(f"              - {note}" for note in r.repair_notes)
     if r.code:
-        lines += ["── code ──", r.code.rstrip()]
+        lines += ["── sql ──" if r.kind == "sql_query" else "── code ──", r.code.rstrip()]
     if r.tests:
         lines += ["── tests ──", r.tests.rstrip()]
     if r.outcome != "tests_passed" and r.output:

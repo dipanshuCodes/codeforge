@@ -33,7 +33,7 @@ Domain vocabulary (Request, Run, Execution, Conversation, Serving tier and other
 ### Non-goals
 - A general-purpose IDE, multi-file project generation, or long-running services.
 - Executing generated code outside the sandbox, or with network access.
-- Languages beyond Python. `sql_query` and `other` Requests get an honest "not supported" report and no code.
+- Languages beyond Python, apart from read-only SQL on the sample database (R7). `other` Requests get an honest "not supported" report and no code.
 - Model-decided policy, escalation, quotas or ship/no-ship verdicts.
 - Production auth/user management: identity comes from config.
 
@@ -52,7 +52,7 @@ Mandatory (from the problem statement): **Level 1, R1, R2, R6**. Chosen levers: 
 | R5 Resilience | Must have (chosen lever) |
 | Chat UI (bonus) | Should have: Gradio, owned by Neha, a thin adapter; drop it if it isn't working by 1:30 PM IST |
 | R4 Cost & latency | Good to have, only if time remains. Model names in config keep the door open |
-| R7 Safe SQL agent (bonus) | Out: no sample database, and it adds a second policy surface |
+| R7 Safe SQL agent (bonus) | Must have (reopened 2026-11-15): instructor role only; in-memory fake sample database (none was provided); SQLite authorizer instead of `sqlglot` (no new dependency); `validate_sql` in `policy/sql_policy.py` |
 
 ### Phasing
 1. ~~Brainstorm~~ Done 2026-11-15; see `plans/2026-11-15-01-problem-statement-alignment.md`.
@@ -89,7 +89,9 @@ One LangGraph graph with typed state. One Conversation is one LangGraph `thread_
 ingress: mask (R1) → identity + run quota from config (R1) → Duplicate Request lookup (Request key)
   → triage (R3) → escalation rules (R3) ──P1──▶ Ticket + Handoff note (no generation)
                                           ──P2/P3▶ Ticket, then continue
-  → router ─sql_query / other─▶ "not supported" report
+  → router ─other─▶ "not supported" report
+           ─sql_query─▶ SQL agent → sql policy (authorizer, per-role tables, 1 SELECT, LIMIT clamp)
+                        ─deny─▶ refuse (strike) / ─allow─▶ run on in-memory sample DB → report
   → requirements → code gen → test gen
   → policy gate (R2) ─deny──────────▶ refuse + log (counts as a strike)
                      ─needs_approval─▶ interrupt() → human approve/reject
@@ -136,6 +138,7 @@ Create directories only when there is code for them. Boundaries:
 | Requirements | masked request | function name, params, return, edge cases |
 | Code Generation | requirements | code |
 | Test Generation | requirements + code | pytest tests |
+| SQL (R7) | masked request + role's table schema | one SQLite SELECT |
 | Integration (orchestrator) | n/a | LangGraph graph: runs nodes, gate, sandbox, report |
 | Triage (R3) | masked request | language, sentiment (`calm`/`mildly_unhappy`/`angry`), urgency (`low`/`high`), wants_human. No task type: the Router alone decides the kind |
 | Handoff summary (R3) | masked ticket fields | 1–2 advisory sentences from the small model; masked again before saving; absent during an outage |

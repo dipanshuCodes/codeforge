@@ -29,6 +29,12 @@ def _after_ingress(state: RunState) -> str:
     return "report" if state.get("outcome") else "triage"
 
 
+def _after_router(state: RunState) -> str:
+    if state.get("outcome"):
+        return "report"
+    return "sql" if state.get("kind") == "sql_query" else "requirements"
+
+
 def _after_policy(state: RunState) -> str:
     verdict = state.get("verdict")
     if verdict == "allow":
@@ -74,14 +80,15 @@ def build_graph(
 
     g = StateGraph(RunState)
     for name in ("ingress", "triage", "escalation", "router", "requirements", "codegen",
-                 "testgen", "policy", "approval", "execute", "repair", "report"):
+                 "testgen", "policy", "approval", "execute", "repair", "report", "sql"):
         g.add_node(name, getattr(nodes, name))
 
     g.add_edge(START, "ingress")
     g.add_conditional_edges("ingress", _after_ingress, ["triage", "report", END])
     g.add_edge("triage", "escalation")
     g.add_conditional_edges("escalation", _continue_or_report("router"), ["router", "report"])
-    g.add_conditional_edges("router", _continue_or_report("requirements"), ["requirements", "report"])
+    g.add_conditional_edges("router", _after_router, ["requirements", "sql", "report"])
+    g.add_edge("sql", "report")
     g.add_conditional_edges("requirements", _continue_or_report("codegen"), ["codegen", "report"])
     g.add_conditional_edges("codegen", _continue_or_report("testgen"), ["testgen", "report"])
     g.add_conditional_edges("testgen", _continue_or_report("policy"), ["policy", "report"])

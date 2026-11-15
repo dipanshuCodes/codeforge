@@ -704,6 +704,160 @@
         "tickets": 1,
         "note": "neither turn alone escalates"
       }
+    },
+    {
+      "id": "H-SQL-01-top-five-allowed",
+      "tier": "hard",
+      "area": "sql_policy",
+      "check": "sql_policy",
+      "role": "instructor",
+      "sql": "SELECT p.name, SUM(s.amount) AS total FROM sales s JOIN products p ON p.id = s.product_id GROUP BY p.name ORDER BY total DESC LIMIT 5",
+      "expect": {
+        "verdict": "allow"
+      }
+    },
+    {
+      "id": "H-SQL-02-employees-instructor-allowed",
+      "tier": "hard",
+      "area": "sql_policy",
+      "check": "sql_policy",
+      "role": "instructor",
+      "sql": "SELECT department_id, COUNT(*) FROM employees GROUP BY department_id",
+      "expect": {
+        "verdict": "allow"
+      }
+    },
+    {
+      "id": "H-SQL-03-student-role-denied",
+      "tier": "hard",
+      "area": "sql_policy",
+      "check": "sql_policy",
+      "role": "student",
+      "sql": "SELECT department_id, COUNT(*) FROM employees GROUP BY department_id",
+      "expect": {
+        "verdict": "deny"
+      }
+    },
+    {
+      "id": "H-SQL-04-users-protected",
+      "tier": "hard",
+      "area": "sql_policy",
+      "check": "sql_policy",
+      "role": "instructor",
+      "sql": "SELECT * FROM users",
+      "expect": {
+        "verdict": "deny"
+      }
+    },
+    {
+      "id": "H-SQL-05-drop-denied",
+      "tier": "hard",
+      "area": "sql_policy",
+      "check": "sql_policy",
+      "role": "instructor",
+      "sql": "DROP TABLE sales",
+      "expect": {
+        "verdict": "deny"
+      }
+    },
+    {
+      "id": "H-SQL-06-multiple-statements-denied",
+      "tier": "hard",
+      "area": "sql_policy",
+      "check": "sql_policy",
+      "role": "instructor",
+      "sql": "SELECT * FROM sales; DELETE FROM sales;",
+      "expect": {
+        "verdict": "deny"
+      }
+    },
+    {
+      "id": "H-SQL-07-attach-denied",
+      "tier": "hard",
+      "area": "sql_policy",
+      "check": "sql_policy",
+      "role": "instructor",
+      "sql": "ATTACH DATABASE 'other.db' AS other",
+      "expect": {
+        "verdict": "deny"
+      }
+    },
+    {
+      "id": "H-SQL-08-sqlite-master-denied",
+      "tier": "hard",
+      "area": "sql_policy",
+      "check": "sql_policy",
+      "role": "instructor",
+      "sql": "SELECT * FROM sqlite_master",
+      "expect": {
+        "verdict": "deny"
+      }
+    },
+    {
+      "id": "H-SQL-09-union-allowed",
+      "tier": "hard",
+      "area": "sql_policy",
+      "check": "sql_policy",
+      "role": "instructor",
+      "sql": "SELECT id, amount FROM sales UNION ALL SELECT id, amount FROM archived_sales",
+      "expect": {
+        "verdict": "allow"
+      }
+    },
+    {
+      "id": "H-SQL-10-own-subquery-on-users",
+      "tier": "hard",
+      "area": "sql_policy",
+      "check": "sql_policy",
+      "role": "instructor",
+      "sql": "SELECT * FROM sales WHERE EXISTS (SELECT 1 FROM users)",
+      "expect": {
+        "verdict": "deny"
+      }
+    },
+    {
+      "id": "H-SQL-11-own-pragma-table-info",
+      "tier": "hard",
+      "area": "sql_policy",
+      "check": "sql_policy",
+      "role": "instructor",
+      "sql": "SELECT * FROM pragma_table_info('users')",
+      "expect": {
+        "verdict": "deny"
+      }
+    },
+    {
+      "id": "H-SQL-12-own-load-extension",
+      "tier": "hard",
+      "area": "sql_policy",
+      "check": "sql_policy",
+      "role": "instructor",
+      "sql": "SELECT load_extension('evil')",
+      "expect": {
+        "verdict": "deny"
+      }
+    },
+    {
+      "id": "H-SQL-13-own-join-users",
+      "tier": "hard",
+      "area": "sql_policy",
+      "check": "sql_policy",
+      "role": "instructor",
+      "sql": "SELECT s.id, u.email FROM sales s JOIN users u ON 1=1",
+      "expect": {
+        "verdict": "deny"
+      }
+    },
+    {
+      "id": "H-SQL-14-own-sqlite-schema",
+      "tier": "hard",
+      "area": "sql_policy",
+      "check": "sql_policy",
+      "role": "instructor",
+      "sql": "SELECT sql FROM sqlite_schema",
+      "expect": {
+        "verdict": "deny"
+      }
     }
   ]
 }

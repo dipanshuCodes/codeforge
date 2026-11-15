@@ -33,7 +33,7 @@ flowchart TD
     requirements["<b>requirements</b> · model"]:::built
     codegen["<b>codegen</b> · model"]:::built
     testgen["<b>testgen</b> · model"]:::built
-    resilience["retry / breaker / fallback /<br/>template tier · R5"]:::todo
+    resilience["retry / breaker / fallback /<br/>template tier · R5"]:::built
     policy["<b>policy</b> · ast<br/>parse fail → deny, else needs_approval<br/>allowlist · R2"]:::stub
     approval{{"<b>approval</b><br/>interrupt · only 'approve' approves"}}:::built
     execute["<b>execute</b> · sandbox<br/>python -I, 10 s, group kill, env strip, 10 KB<br/>net block, 256 MB, Execution key · R2"]:::stub
@@ -108,8 +108,8 @@ offline unit tests only; nothing here is checked live against Groq yet.
 - [x] Bad model output → "cannot generate now"
 - [x] Generated code missing the required function name → "cannot generate now"
 - [x] Tests import from the solution module
-- [ ] Retry, circuit breaker, small-model fallback, template tier [R5]
-- [ ] Chaos switch: 20 of 20 Requests answered at 60% failures [R5]
+- [x] Retry, circuit breaker, small-model fallback, template tier [R5]
+- [x] Chaos switch: 20 of 20 Requests answered at 60% failures [R5]
 
 **policy**
 - [x] Parse failure, null byte, lone surrogate, oversized or deeply nested source → deny
@@ -123,7 +123,7 @@ offline unit tests only; nothing here is checked live against Groq yet.
 **approval**
 - [x] Only an exact "approve" approves (case and spaces ignored)
 - [x] Anything else, including empty, rejects; reject runs nothing
-- [ ] Degraded tier never auto-approves risky code [R5]
+- [x] Degraded tier never auto-approves risky code [R5]
 
 **execute (sandbox)**
 - [x] Passing tests (exit 0), failing tests (exit 1), no tests (exit 5)
@@ -144,7 +144,7 @@ offline unit tests only; nothing here is checked live against Groq yet.
 - [x] Passed, failed (with output), exit 5, timeout, denied, rejected, unsupported, cannot_generate
 - [x] "Tests passed" only on exit 0 with a real passing test; all-skipped is never a pass
 - [x] Run saved to SQLite; one user cannot read another's Run (missing = not yours)
-- [ ] Report names the Serving tier from the resilience layer [R5]
+- [x] Report names the Serving tier from the resilience layer [R5]
 
 **Cross-cutting**
 - [ ] Live Groq smoke test and the two live checks (L1 example, Student B) [L1]
@@ -163,7 +163,7 @@ offline unit tests only; nothing here is checked live against Groq yet.
 | 3c | R6 Evals as a gate | Siyahul | todo | issue [#6](https://github.com/dipanshuCodes/codeforge/issues/6) |
 | 3d | Repair loop (after R1/R2/R6 green) | — | todo | issue [#7](https://github.com/dipanshuCodes/codeforge/issues/7) |
 | 4a | R3 Escalation and handoff | Siyahul | todo | issue [#8](https://github.com/dipanshuCodes/codeforge/issues/8) |
-| 4b | R5 Resilience | Siyahul | todo | issue [#9](https://github.com/dipanshuCodes/codeforge/issues/9) |
+| 4b | R5 Resilience | Siyahul | done (code + unit tests; live Groq check open) | issue [#9](https://github.com/dipanshuCodes/codeforge/issues/9) |
 | 4c | Gradio UI (drop if not working by **1:30 PM IST**) | Neha | todo | issue [#10](https://github.com/dipanshuCodes/codeforge/issues/10) |
 | 4d | R4 Cost and latency (only if time remains) | — | todo | issue [#11](https://github.com/dipanshuCodes/codeforge/issues/11) |
 | 5 | Deliverables and presentation | Neha + all | todo | issue [#12](https://github.com/dipanshuCodes/codeforge/issues/12) |
@@ -263,14 +263,14 @@ Plan: [2026-11-15-03-l1-pipeline.md](2026-11-15-03-l1-pipeline.md).
 
 | Item | Status | Evidence |
 |---|---|---|
-| Model-call wrapper: jittered retry on transient errors only, circuit breaker | todo | |
-| Fallback to the small model | todo | |
-| Template tier: strict keyword rules, exactly one match, else "cannot generate now" + Ticket | todo | |
-| Chaos switch: 60% failures, fixed seed | todo | |
-| 20 of 20 Requests answered under chaos; report names the Serving tier | todo | |
-| Total outage: template tasks still work; unknown task → honest refusal + Ticket | todo | |
-| Degraded tier never auto-approves risky code | todo | |
-| Chaos-run log saved for the submission | todo | |
+| Model-call wrapper: jittered retry on transient errors only, circuit breaker | done | `llm/resilient.py`, `policy/resilience.py`; `test_resilience_rules.py`, `test_resilient_caller.py` |
+| Fallback to the small model | done | `llm/factory.py`; `test_resilient_caller.py` |
+| Template tier: strict keyword rules, exactly one match, else "cannot generate now" + Ticket | done | `policy/templates.py`; `test_templates.py`; ticket is a minimal store row (R3 #8 enriches) |
+| Chaos switch: 60% failures, fixed seed | done | `llm/chaos.py`, `CODEFORGE_CHAOS_RATE/SEED`; `test_resilient_caller.py`, `test_config.py` |
+| 20 of 20 Requests answered under chaos; report names the Serving tier | done | `test_chaos_run.py`; `scripts/chaos_run.py` → 20/20 |
+| Total outage: template tasks still work; unknown task → honest refusal + Ticket | done | `test_resilient_graph.py` |
+| Degraded tier never auto-approves risky code | done | `test_resilience_rules.py`, `test_resilient_graph.py` |
+| Chaos-run log saved for the submission | done | `evals/chaos_run_log.txt` |
 
 ## 4c. Gradio UI — Neha (drop at 1:30 PM IST if not working)
 

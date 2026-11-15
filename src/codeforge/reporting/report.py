@@ -22,6 +22,7 @@ class ReportInput(BaseModel):
     exit_code: int | None
     timeout_s: float
     output: str | None
+    ticket_id: str | None = None
     run_quota: int | None = None
 
 
@@ -62,6 +63,8 @@ def render_report(r: ReportInput) -> str:
     if r.serving_tier:
         model = f" ({r.model})" if r.model else ""
         lines.append(f"Serving tier: {r.serving_tier}{model}")
+    if r.ticket_id:
+        lines.append(f"Ticket:       {r.ticket_id[:8]} opened")
     if r.verdict:
         lines.append(f"Policy:       {_policy_line(r)}")
         lines.extend(f"              - {reason}" for reason in r.reasons)

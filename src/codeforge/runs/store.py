@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import uuid
 from contextlib import closing
+from datetime import datetime, timezone
 
 from pydantic import BaseModel
 
@@ -28,6 +30,30 @@ CREATE TABLE IF NOT EXISTS runs (
                for f in _FIELDS[1:])}
 )
 """
+
+
+_TICKETS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS tickets (
+    ticket_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    run_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    serving_tier TEXT,
+    request TEXT NOT NULL
+)
+"""
+
+
+class TicketRecord(BaseModel):
+    """A minimal Ticket (R5 opens one when it cannot generate). R3 adds priority and handoff."""
+
+    ticket_id: str
+    run_id: str
+    created_at: str
+    reason: str
+    serving_tier: str | None = None
+    request: str  # always the masked Request
 
 
 class RunRecord(BaseModel):
@@ -57,6 +83,7 @@ class RunStore:
         self._db_path = settings.db_path
         with closing(self._connect()) as conn, conn:
             conn.execute(_SCHEMA)
+            conn.execute(_TICKETS_SCHEMA)
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self._db_path)
@@ -95,6 +122,26 @@ class RunStore:
                 (self._user_id, since_iso, *sorted(not_counted)),
             ).fetchone()
         return n
+
+    def add_ticket(self, run_id: str, reason: str, serving_tier: str | None, request: str) -> str:
+        """Open a Ticket for the config User. `request` must already be masked."""
+        ticket_id = uuid.uuid4().hex
+        with closing(self._connect()) as conn, conn:
+            conn.execute(
+                "INSERT INTO tickets (ticket_id, user_id, run_id, created_at, reason, serving_tier, request)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (ticket_id, self._user_id, run_id, datetime.now(timezone.utc).isoformat(), reason,
+                 serving_tier, request),
+            )
+        return ticket_id
+
+    def list_tickets(self) -> list[TicketRecord]:
+        with closing(self._connect()) as conn:
+            rows = conn.execute(
+                "SELECT ticket_id, run_id, created_at, reason, serving_tier, request FROM tickets"
+                " WHERE user_id = ? ORDER BY created_at", (self._user_id,)
+            ).fetchall()
+        return [TicketRecord(**dict(r)) for r in rows]
 
     def list_mine(self) -> list[RunRecord]:
         with closing(self._connect()) as conn:

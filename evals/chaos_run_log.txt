@@ -1,0 +1,24 @@
+Chaos run: rate=0.6 seed=42, fake model under the resilience layer
+
+ 1. outcome=tests_passed     tier=primary (openai/gpt-oss-120b) ticket=no  | Write a function that checks if a string is a palindrome
+ 2. outcome=tests_passed     tier=template               ticket=no  | Write a function to reverse a string
+ 3. outcome=tests_passed     tier=template               ticket=no  | Write a function that returns the sum of a list of numbers
+ 4. outcome=tests_passed     tier=template               ticket=no  | Write a function that computes the factorial of n
+ 5. outcome=tests_passed     tier=template               ticket=no  | Is this word a palindrome? write a function
+ 6. outcome=tests_passed     tier=fallback (openai/gpt-oss-20b) ticket=no  | reverse a string please
+ 7. outcome=tests_passed     tier=template               ticket=no  | sum a list of numbers
+ 8. outcome=tests_passed     tier=template               ticket=no  | factorial function
+ 9. outcome=cannot_generate  tier=template               ticket=yes | Write a function that sorts words by length
+10. outcome=cannot_generate  tier=template               ticket=yes | Write a function that finds the median of a list
+11. outcome=tests_passed     tier=template               ticket=no  | Write a function that checks if a string is a palindrome
+12. outcome=tests_passed     tier=template               ticket=no  | Write a function to reverse a string
+13. outcome=tests_passed     tier=template               ticket=no  | Write a function that returns the sum of a list of numbers
+14. outcome=tests_passed     tier=template               ticket=no  | Write a function that computes the factorial of n
+15. outcome=tests_passed     tier=template               ticket=no  | Is this word a palindrome? write a function
+16. outcome=tests_passed     tier=template               ticket=no  | reverse a string please
+17. outcome=tests_passed     tier=fallback (openai/gpt-oss-20b) ticket=no  | sum a list of numbers
+18. outcome=tests_passed     tier=template               ticket=no  | factorial function
+19. outcome=cannot_generate  tier=template               ticket=yes | Write a function that sorts words by length
+20. outcome=cannot_generate  tier=template               ticket=yes | Write a function that finds the median of a list
+
+Answered: 20/20   Tier named or honest refusal: 20/20

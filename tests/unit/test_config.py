@@ -117,3 +117,22 @@ def test_env_example_holds_no_secret_values():
 def test_env_files_are_gitignored():
     ignored = (REPO_ROOT / ".gitignore").read_text().splitlines()
     assert ".env" in ignored and ".env.local" in ignored
+
+
+def test_chaos_settings_default_off_and_parse_from_env():
+    from codeforge.config import load_settings
+    base = {"CODEFORGE_USER_ID": "u", "CODEFORGE_ROLE": "student"}
+    assert load_settings(base).chaos_rate == 0.0
+    s = load_settings({**base, "CODEFORGE_CHAOS_RATE": "0.6", "CODEFORGE_CHAOS_SEED": "42"})
+    assert (s.chaos_rate, s.chaos_seed) == (0.6, 42)
+
+
+import pytest as _pytest
+
+
+@_pytest.mark.parametrize("rate", ["abc", "-0.1", "1.5"])
+def test_bad_chaos_rate_fails_closed(rate):
+    from codeforge.config import ConfigError, load_settings
+    with _pytest.raises(ConfigError):
+        load_settings({"CODEFORGE_USER_ID": "u", "CODEFORGE_ROLE": "student",
+                       "CODEFORGE_CHAOS_RATE": rate})

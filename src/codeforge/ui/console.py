@@ -71,7 +71,7 @@ def main() -> None:
 
     from codeforge.config import ConfigError, load_env_files, load_settings
     from codeforge.graph.build import build_graph
-    from codeforge.llm.caller import GroqCaller
+    from codeforge.llm.factory import build_caller
     from codeforge.runs.store import RunStore
 
     load_env_files(Path.cwd())  # .env.local (local) / .env (deployed); the shell still wins
@@ -83,7 +83,7 @@ def main() -> None:
     if not os.environ.get("GROQ_API_KEY"):
         print("Config error: GROQ_API_KEY is not set", file=sys.stderr)
         sys.exit(2)
-    graph = build_graph(settings, GroqCaller(settings.large_model), RunStore(settings),
+    graph = build_graph(settings, build_caller(settings), RunStore(settings),
                         checkpointer=MemorySaver())
     print(DEV_WARNING)
     print(f"User: {settings.user_id} ({settings.role}). Type {QUIT} to exit.")

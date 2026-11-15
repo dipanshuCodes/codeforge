@@ -22,7 +22,28 @@ class ModelOutputError(ModelCallError):
 
 
 class ModelUnavailableError(ModelCallError):
-    """The provider failed (rate limit, server error, timeout, network)."""
+    """The provider failed (rate limit, server error, timeout, network).
+
+    `kind` is one of rate_limit / server_unavailable / timeout / other; R5 retries only the
+    transient ones (see policy/resilience.py).
+    """
+
+    def __init__(self, message: str = "", kind: str = "other") -> None:
+        super().__init__(message)
+        self.kind = kind
+
+
+def classify_failure(exc: BaseException) -> str:
+    """Map a provider exception to a failure kind, from its status code or type name."""
+    status = getattr(exc, "status_code", None)
+    name = type(exc).__name__.lower()
+    if status == 429 or "ratelimit" in name:
+        return "rate_limit"
+    if status in (500, 502, 503, 504) or "internalserver" in name or "serviceunavailable" in name:
+        return "server_unavailable"
+    if "timeout" in name or isinstance(exc, TimeoutError):
+        return "timeout"
+    return "other"
 
 
 class StructuredCaller(Protocol):
@@ -44,7 +65,7 @@ class GroqCaller:
         except (ValidationError, ValueError) as exc:
             raise ModelOutputError(type(exc).__name__) from exc
         except Exception as exc:  # provider/network errors; R5 retries the transient ones
-            raise ModelUnavailableError(type(exc).__name__) from exc
+            raise ModelUnavailableError(type(exc).__name__, kind=classify_failure(exc)) from exc
         parsed = result.get("parsed")
         if result.get("parsing_error") is not None or not isinstance(parsed, schema):
             raise ModelOutputError("structured output failed to parse")

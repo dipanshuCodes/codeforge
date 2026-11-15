@@ -17,9 +17,11 @@ from codeforge.agents.schemas import Requirements
 from codeforge.agents.testgen import generate_tests
 from codeforge.config import Settings
 from codeforge.graph.state import RUN_DEFAULTS, RunState
-from codeforge.llm.caller import ModelCallError, ModelOutputError, StructuredCaller
+from codeforge.llm.caller import ModelCallError, ModelOutputError, ModelUnavailableError, StructuredCaller
 from codeforge.policy.code_policy import defines_function, evaluate_code_policy, strictest
 from codeforge.policy.quota import NOT_COUNTED, quota_allows, quota_window_start
+from codeforge.policy.resilience import degrade_verdict, worst_tier
+from codeforge.policy.templates import pick_template
 from codeforge.privacy.masking import mask
 from codeforge.reporting.outcome import outcome_from_execution
 from codeforge.reporting.report import ReportInput, render_report
@@ -27,7 +29,6 @@ from codeforge.runs.store import RunRecord, RunStore
 from codeforge.sandbox.runner import ExecutionResult
 
 APPROVE_WORD = "approve"
-SERVING_TIER = "primary"  # L1 has no fallback; R5 sets this per call
 
 
 class Nodes:
@@ -75,47 +76,83 @@ class Nodes:
 
     # --- model nodes ---------------------------------------------------------------------
 
+    def _tier(self, state: RunState) -> str | None:
+        """Most degraded tier used so far in this Run. A caller without tiers is `primary`."""
+        used = getattr(self.caller, "last_tier", None) or "primary"
+        return worst_tier(state.get("serving_tier"), used)
+
+    def _outage(self, state: RunState) -> dict[str, Any]:
+        """Both model tiers failed: serve a strict Template match, else say so and open a Ticket.
+
+        Never invents code for an unknown task.
+        """
+        template = pick_template(state["request"])
+        if template is not None:
+            return {"kind": "python_function", "serving_tier": "template",
+                    "requirements": template.requirements.model_dump(),
+                    "code": template.code, "tests": template.tests}
+        ticket_id = self.store.add_ticket(state["run_id"], "model outage, no template match",
+                                          "template", state["request"])
+        return {"outcome": "cannot_generate", "serving_tier": "template", "ticket_id": ticket_id}
+
     def router(self, state: RunState) -> dict[str, Any]:
         try:
             kind = classify(self.caller, state["request"]).kind
         except ModelOutputError:
             kind = "other"  # fail closed: unreadable classification is not served
+        except ModelUnavailableError:
+            return self._outage(state)
         except ModelCallError:
             return {"outcome": "cannot_generate"}
         if kind != "python_function":
-            return {"kind": kind, "outcome": "unsupported"}
-        return {"kind": kind}
+            return {"kind": kind, "outcome": "unsupported", "serving_tier": self._tier(state)}
+        return {"kind": kind, "serving_tier": self._tier(state)}
 
     def requirements(self, state: RunState) -> dict[str, Any]:
+        if state.get("serving_tier") == "template":
+            return {}  # the Template tier already filled requirements, code and tests
         try:
             req = extract_requirements(self.caller, state["request"])
+        except ModelUnavailableError:
+            return self._outage(state)
         except ModelCallError:
             return {"outcome": "cannot_generate"}
-        return {"requirements": req.model_dump()}
+        return {"requirements": req.model_dump(), "serving_tier": self._tier(state)}
 
     def codegen(self, state: RunState) -> dict[str, Any]:
+        if state.get("serving_tier") == "template":
+            return {}
         req = Requirements.model_validate(state["requirements"])
         try:
             code = generate_code(self.caller, req).code
+        except ModelUnavailableError:
+            return self._outage(state)
         except ModelCallError:
             return {"outcome": "cannot_generate"}
+        tier = self._tier(state)
         if not defines_function(code, req.function_name):
-            return {"code": code, "outcome": "cannot_generate"}
-        return {"code": code}
+            return {"code": code, "outcome": "cannot_generate", "serving_tier": tier}
+        return {"code": code, "serving_tier": tier}
 
     def testgen(self, state: RunState) -> dict[str, Any]:
+        if state.get("serving_tier") == "template":
+            return {}
         req = Requirements.model_validate(state["requirements"])
         try:
             tests = generate_tests(self.caller, req, state["code"]).tests
+        except ModelUnavailableError:
+            return self._outage(state)
         except ModelCallError:
             return {"outcome": "cannot_generate"}
-        return {"tests": tests}
+        return {"tests": tests, "serving_tier": self._tier(state)}
 
     # --- policy / approval / execute ----------------------------------------------------
 
     def policy(self, state: RunState) -> dict[str, Any]:
         decision = strictest(evaluate_code_policy(state["code"]), evaluate_code_policy(state["tests"]))
-        update: dict[str, Any] = {"verdict": decision.verdict, "reasons": decision.reasons}
+        # A degraded tier never auto-approves (fail closed).
+        verdict = degrade_verdict(decision.verdict, state.get("serving_tier"))
+        update: dict[str, Any] = {"verdict": verdict, "reasons": decision.reasons}
         if decision.verdict == "deny":
             update["outcome"] = "denied"
         return update
@@ -149,15 +186,19 @@ class Nodes:
         outcome = state.get("outcome") or outcome_from_execution(
             execution.get("exit_code"), bool(execution.get("timed_out")), execution.get("output") or ""
         )
-        generated = state.get("code") is not None
-        tier = SERVING_TIER if generated else None
+        tier = state.get("serving_tier") if state.get("code") is not None else None
+        if state.get("ticket_id"):
+            tier = state.get("serving_tier")  # name the tier even when nothing was generated
+        model = {"primary": self.settings.large_model,
+                 "fallback": self.settings.small_model}.get(tier or "")
         report = render_report(ReportInput(
             run_id=state["run_id"], request=state["request"], kind=state.get("kind"),
-            outcome=outcome, serving_tier=tier, model=self.settings.large_model if tier else None,
+            outcome=outcome, serving_tier=tier, model=model,
             verdict=state.get("verdict"), reasons=state.get("reasons", []),
             approved=state.get("approved"), code=state.get("code"), tests=state.get("tests"),
             exit_code=execution.get("exit_code"), timeout_s=self.settings.sandbox_timeout_s,
             output=execution.get("output"), run_quota=self.settings.run_quota,
+            ticket_id=state.get("ticket_id"),
         ))
         self.store.save(RunRecord(
             run_id=state["run_id"], conversation_id=state["conversation_id"],

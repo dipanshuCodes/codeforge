@@ -32,3 +32,10 @@ class TestsOutput(BaseModel):
     __test__ = False  # not a pytest test class, despite the name
 
     tests: str = Field(description="The complete pytest module source")
+
+
+class RepairOutput(BaseModel):
+    """Repair attempt 2: the agent may return changed tests as well as changed code."""
+
+    code: str = Field(description="The complete corrected Python module source")
+    tests: str = Field(description="The complete pytest module source")

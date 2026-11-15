@@ -243,6 +243,7 @@ class Nodes:
             "reasons": state["reasons"],
             "code": state["code"],
             "tests": state["tests"],
+            "serving_tier": SERVING_TIER,
         })
         # Approval is an explicit act: only the exact word counts; anything else rejects.
         approved = isinstance(answer, str) and answer.strip().lower() == APPROVE_WORD

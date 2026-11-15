@@ -51,3 +51,20 @@ def build_caller(
         tiers = [ChaosCaller(t, settings.chaos_rate, settings.chaos_seed + i)
                  for i, t in enumerate(tiers)]
     return ResilientCaller(*tiers)
+
+
+def build_summary_caller(
+    settings: Settings, inner: StructuredCaller | None = None, *,
+    env: Mapping[str, str] = os.environ,
+) -> StructuredCaller:
+    """Small model for the advisory Handoff summary (R3). No retry or fallback: on any failure,
+    including a missing GROQ_API_KEY, the summary is simply absent. Chaos applies here too."""
+    if inner is not None:
+        caller = inner
+    elif _has(env, "GROQ_API_KEY"):
+        caller = GroqCaller(settings.small_model)
+    else:
+        caller = UnavailableCaller("GROQ_API_KEY is not set")
+    if settings.chaos_rate > 0:
+        caller = ChaosCaller(caller, settings.chaos_rate, settings.chaos_seed + 3)  # tiers use +0..+2
+    return caller

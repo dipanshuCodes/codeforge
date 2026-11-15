@@ -49,8 +49,9 @@ def build_graph(
     *,
     run_tests: Callable[..., ExecutionResult] = run_pytest,
     checkpointer: Any = None,
+    summary_caller: StructuredCaller | None = None,
 ):
-    nodes = Nodes(settings, caller, store, run_tests)
+    nodes = Nodes(settings, caller, store, run_tests, summary_caller)
 
     def _wants_repair(state: RunState) -> bool:
         execution = state.get("execution") or {}
@@ -79,7 +80,7 @@ def build_graph(
     g.add_edge(START, "ingress")
     g.add_conditional_edges("ingress", _after_ingress, ["triage", "report", END])
     g.add_edge("triage", "escalation")
-    g.add_edge("escalation", "router")
+    g.add_conditional_edges("escalation", _continue_or_report("router"), ["router", "report"])
     g.add_conditional_edges("router", _continue_or_report("requirements"), ["requirements", "report"])
     g.add_conditional_edges("requirements", _continue_or_report("codegen"), ["codegen", "report"])
     g.add_conditional_edges("codegen", _continue_or_report("testgen"), ["testgen", "report"])

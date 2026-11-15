@@ -54,6 +54,8 @@ CREATE TABLE IF NOT EXISTS tickets (
     request TEXT NOT NULL
 )
 """
+# Added by R3; older databases get them through ALTER TABLE in RunStore.__init__.
+_TICKET_EXTRA = {"priority": "TEXT", "sla_hours": "INTEGER", "handoff_note": "TEXT"}
 
 
 _FEEDBACK_SCHEMA = """
@@ -77,7 +79,7 @@ class FeedbackRecord(BaseModel):
 
 
 class TicketRecord(BaseModel):
-    """A minimal Ticket (R5 opens one when it cannot generate). R3 adds priority and handoff."""
+    """A Ticket. R5's outage Ticket has no priority; R3 Escalations set priority, SLA and note."""
 
     ticket_id: str
     run_id: str
@@ -85,6 +87,9 @@ class TicketRecord(BaseModel):
     reason: str
     serving_tier: str | None = None
     request: str  # always the masked Request
+    priority: str | None = None
+    sla_hours: int | None = None
+    handoff_note: str | None = None  # rendered from masked fields only
 
 
 class RunRecord(BaseModel):
@@ -125,6 +130,10 @@ class RunStore:
                 if f not in have:
                     kind = "INTEGER" if f in _INT_FIELDS else "TEXT"
                     conn.execute(f"ALTER TABLE runs ADD COLUMN {f} {kind}")
+            have = {row["name"] for row in conn.execute("PRAGMA table_info(tickets)")}
+            for f, kind in _TICKET_EXTRA.items():
+                if f not in have:
+                    conn.execute(f"ALTER TABLE tickets ADD COLUMN {f} {kind}")
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self._db_path)
@@ -164,22 +173,25 @@ class RunStore:
             ).fetchone()
         return n
 
-    def add_ticket(self, run_id: str, reason: str, serving_tier: str | None, request: str) -> str:
-        """Open a Ticket for the config User. `request` must already be masked."""
+    def add_ticket(self, run_id: str, reason: str, serving_tier: str | None, request: str, *,
+                   priority: str | None = None, sla_hours: int | None = None,
+                   handoff_note: str | None = None) -> str:
+        """Open a Ticket for the config User. `request` and `handoff_note` must already be masked."""
         ticket_id = uuid.uuid4().hex
         with closing(self._connect()) as conn, conn:
             conn.execute(
-                "INSERT INTO tickets (ticket_id, user_id, run_id, created_at, reason, serving_tier, request)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO tickets (ticket_id, user_id, run_id, created_at, reason, serving_tier,"
+                " request, priority, sla_hours, handoff_note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (ticket_id, self._user_id, run_id, datetime.now(timezone.utc).isoformat(), reason,
-                 serving_tier, request),
+                 serving_tier, request, priority, sla_hours, handoff_note),
             )
         return ticket_id
 
     def list_tickets(self) -> list[TicketRecord]:
         with closing(self._connect()) as conn:
             rows = conn.execute(
-                "SELECT ticket_id, run_id, created_at, reason, serving_tier, request FROM tickets"
+                "SELECT ticket_id, run_id, created_at, reason, serving_tier, request, priority,"
+                " sla_hours, handoff_note FROM tickets"
                 " WHERE user_id = ? ORDER BY created_at", (self._user_id,)
             ).fetchall()
         return [TicketRecord(**dict(r)) for r in rows]

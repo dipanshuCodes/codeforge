@@ -100,7 +100,7 @@ def main(argv: list[str] | None = None) -> None:
 
     from codeforge.config import ConfigError, load_env_files, load_settings
     from codeforge.graph.build import build_graph
-    from codeforge.llm.factory import build_caller
+    from codeforge.llm.factory import build_caller, build_summary_caller
     from codeforge.runs.store import RunStore
 
     load_env_files(Path.cwd())  # .env.local (local) / .env (deployed); the shell still wins
@@ -125,7 +125,8 @@ def main(argv: list[str] | None = None) -> None:
         # Not fatal: tiers without a key are skipped; with none, only Templates can answer.
         print("Warning: no model API key set; only the template tier can answer.", file=sys.stderr)
     store = RunStore(settings)
-    graph = build_graph(settings, build_caller(settings), store, checkpointer=MemorySaver())
+    graph = build_graph(settings, build_caller(settings), store, checkpointer=MemorySaver(),
+                        summary_caller=build_summary_caller(settings))
     print(DEV_WARNING)
     print(f"User: {settings.user_id} ({settings.role}). Type {QUIT} to exit, {BAD} [reason] "
           "to flag the last Run.")

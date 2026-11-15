@@ -176,7 +176,7 @@
           "tests_passed",
           "quota_exceeded"
         ],
-        "model_calls": 4,
+        "model_calls": 5,
         "sandbox_runs": 1
       }
     },
@@ -295,7 +295,7 @@
           "tests_passed"
         ],
         "sandbox_runs": 1,
-        "model_calls": 4,
+        "model_calls": 5,
         "duplicate": true,
         "report_contains": [
           "Duplicate Request"

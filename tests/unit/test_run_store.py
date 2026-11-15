@@ -97,3 +97,36 @@ def test_old_database_gains_new_columns(db):
     store = _store(db, "u-alice")
     store.save(_record("r1", request_key="k", outcome="denied"))
     assert store.find_final_run("k").run_id == "r1"
+
+
+def test_ticket_with_priority_sla_and_handoff_note(db):
+    store = _store(db, "u-alice")
+    tid = store.add_ticket("r1", "angry", None, "masked [SECRET]",
+                           priority="P2", sla_hours=4, handoff_note="P2 · angry")
+    (t,) = store.list_tickets()
+    assert (t.ticket_id, t.priority, t.sla_hours, t.handoff_note) == (tid, "P2", 4, "P2 · angry")
+
+
+def test_outage_ticket_still_works_without_priority(db):
+    store = _store(db, "u-alice")
+    store.add_ticket("r1", "model outage, no template match", "template", "req")
+    (t,) = store.list_tickets()
+    assert t.priority is None and t.sla_hours is None and t.handoff_note is None
+    assert t.serving_tier == "template"
+
+
+def test_tickets_are_scoped_to_the_config_user(db):
+    _store(db, "u-bob").add_ticket("r9", "angry", None, "req", priority="P2", sla_hours=4)
+    assert _store(db, "u-alice").list_tickets() == []
+
+
+def test_old_tickets_table_gains_new_columns(db):
+    import sqlite3
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE tickets (ticket_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, "
+                 "run_id TEXT NOT NULL, created_at TEXT NOT NULL, reason TEXT NOT NULL, "
+                 "serving_tier TEXT, request TEXT NOT NULL)")
+    conn.commit(); conn.close()
+    store = _store(db, "u-alice")
+    store.add_ticket("r1", "angry", None, "req", priority="P1", sla_hours=1, handoff_note="n")
+    assert store.list_tickets()[0].priority == "P1"

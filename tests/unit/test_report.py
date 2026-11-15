@@ -109,3 +109,12 @@ def test_report_without_repairs_has_no_repairs_line():
 def test_passed_after_repair_still_says_passed_from_the_real_result():
     text = render_report(_input(repairs_tried=1, max_repairs=2))
     assert "TESTS PASSED" in text and "Repairs:      1 of 2 tried" in text
+
+
+def test_escalated_report_states_ticket_priority_sla_and_id():
+    text = render_report(_input(outcome="escalated", kind=None, code=None, tests=None,
+                                exit_code=None, output=None, verdict=None,
+                                ticket_id="abcdef1234567890", ticket_priority="P1",
+                                ticket_sla_hours=1))
+    assert "HANDED TO A HUMAN" in text
+    assert "Ticket:       abcdef12 · P1, SLA 1 h" in text

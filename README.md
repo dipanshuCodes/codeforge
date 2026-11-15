@@ -37,11 +37,13 @@ flowchart TD
     B --> C[Triage: sentiment, urgency, wants_human]
     C --> D{Escalation rules}
     D -- P1 --> T[Ticket + handoff note]
-    D -- otherwise --> E{Router}
+    T -- "no generation" --> P
+    D -- "P2 / P3: Ticket, then continue" --> E
+    D -- none --> E{Router}
     E -- sql / other --> U[Not supported]
     E -- python --> F[Requirements → Code → Tests]
     F --> G{Policy gate}
-    G -- deny --> R[Refuse and log]
+    G -- deny --> R[Refuse and log;<br/>2nd denial in a Conversation → P3 Ticket]
     G -- needs_approval --> H[Pause for a human]
     H -- reject --> R
     H -- approve --> X

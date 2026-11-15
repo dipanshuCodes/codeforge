@@ -39,3 +39,16 @@ class RepairOutput(BaseModel):
 
     code: str = Field(description="The complete corrected Python module source")
     tests: str = Field(description="The complete pytest module source")
+
+
+class TriageOutput(BaseModel):
+    """Signals for the escalation rules (R3). Deliberately no task type: the Router decides it."""
+
+    language: str = Field(description="ISO 639-1 code of the Request's language, e.g. en")
+    sentiment: Literal["calm", "mildly_unhappy", "angry"]
+    urgency: Literal["low", "high"]
+    wants_human: bool = Field(description="True only if the student asks for a person")
+
+
+class HandoffSummary(BaseModel):
+    summary: str = Field(description="One or two sentences for the human picking up the Ticket")

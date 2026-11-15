@@ -26,9 +26,9 @@ flowchart TD
     ingress["<b>ingress</b><br/>mask secrets/PII first · R1<br/>config identity, new Run, reset fields"]:::built
     quota["Run quota · R1<br/>per User per UTC day, before any model call"]:::built
     reqkey["Request key lookup · R2<br/>Duplicate → stored Run"]:::built
-    triage["<b>triage</b><br/>fixed: calm / low / no human · R3"]:::stub
-    escalation["<b>escalation</b><br/>always none · R3"]:::stub
-    ticket["Ticket + Handoff note · R3"]:::todo
+    triage["<b>triage</b> · model on masked Request<br/>sentiment / urgency / wants_human · R3<br/>failure → calm defaults"]:::built
+    escalation["<b>escalation</b> · pure rules · R3<br/>P1 1 h / P2 4 h / P3 24 h, first match<br/>counters per Conversation"]:::built
+    ticket["Ticket + Handoff note · R3<br/>priority, SLA, masked; AI summary re-masked"]:::built
     router["<b>router</b> · model<br/>python_function / sql_query / other"]:::built
     requirements["<b>requirements</b> · model"]:::built
     codegen["<b>codegen</b> · model"]:::built
@@ -46,7 +46,8 @@ flowchart TD
     ingress --> quota --> triage --> escalation --> router
     quota -- "over limit → quota_exceeded" --> report
     quota -.-> reqkey -.-> triage
-    escalation -. "P1 · R3" .-> ticket -.-> DONE
+    escalation -- "P1: no generation" --> ticket --> report
+    escalation -- "P2 / P3: Ticket, continue" --> router
     router -- "sql_query / other" --> report
     router -- python_function --> requirements --> codegen --> testgen --> policy
     requirements & codegen & testgen -- "bad output → cannot_generate" --> report
@@ -88,14 +89,15 @@ offline unit tests only; nothing here is checked live against Groq yet.
 - [ ] Duplicate Request returns the stored Run (Request key) [R2]
 
 **triage**
-- [ ] Model call for language, sentiment, urgency, wants_human (now fixed: calm / low / no human) [R3]
+- [x] Model call for language, sentiment, urgency, wants_human on the masked Request; failure → calm defaults [R3]
 
 **escalation**
-- [ ] P1 (angry, or asks for a human) → Ticket, skips generation [R3]
-- [ ] P2/P3 → Ticket, then continue [R3]
-- [ ] Two mildly unhappy turns escalate [R3]
-- [ ] Calm Request opens no Ticket [R3]
-- [ ] Handoff note with no key or Aadhaar [R3]
+- [x] P1 (asks for a human and angry or urgent) → Ticket, skips generation [R3]
+- [x] P2/P3 → Ticket, then continue [R3]
+- [x] Two mildly unhappy turns escalate [R3]
+- [x] Calm Request opens no Ticket [R3]
+- [x] Handoff note with no key or Aadhaar [R3]
+- [x] Second policy denial in a Conversation → P3 in that Run [R3]
 
 **router**
 - [x] `python_function` goes on to requirements
@@ -164,7 +166,7 @@ offline unit tests only; nothing here is checked live against Groq yet.
 | 3b | R2 Safe execution | Siyahul | in progress | [plan](2026-11-15-05-r2-safe-execution.md) · branch `feat/r2-safe-execution` |
 | 3c | R6 Evals as a gate | Siyahul | done, PR in review (CI workflow needs team agreement) | [07 plan](2026-11-15-07-r6-evals-gate.md), issue [#6](https://github.com/dipanshuCodes/codeforge/issues/6) |
 | 3d | Repair loop (after R1/R2/R6 green) | Dipanshu | in progress | issue [#7](https://github.com/dipanshuCodes/codeforge/issues/7) |
-| 4a | R3 Escalation and handoff | Siyahul | todo | issue [#8](https://github.com/dipanshuCodes/codeforge/issues/8) |
+| 4a | R3 Escalation and handoff | Siyahul | done (code + unit tests; PR open from `claude/r3-escalation-991c57`; live Groq check open) | [08 plan](2026-11-15-08-r3-escalation.md) · issue [#8](https://github.com/dipanshuCodes/codeforge/issues/8) |
 | 4b | R5 Resilience | Siyahul | done (code + unit tests; live Groq check open) | issue [#9](https://github.com/dipanshuCodes/codeforge/issues/9) |
 | 4b+ | Model chain Sonnet → Groq 120b → Haiku → templates | Dipanshu | done offline (327 tests pass); live key check open | [plan](2026-11-15-08-anthropic-primary-model.md) |
 | 4c | Gradio UI (drop if not working by **1:30 PM IST**) | Neha | todo | issue [#10](https://github.com/dipanshuCodes/codeforge/issues/10) |
@@ -262,12 +264,13 @@ Plan: [2026-11-15-07-repair-loop.md](2026-11-15-07-repair-loop.md) (in progress 
 
 | Item | Status | Evidence |
 |---|---|---|
-| Triage model call (language, sentiment, urgency, wants_human) | todo | |
-| Escalation rules P1/P2/P3 in code, with unit tests | todo | |
-| Tickets table + Handoff note (template line + advisory small-model summary, re-masked) | todo | |
-| Student C → P1 Ticket with no key or Aadhaar; P1 skips generation | todo | |
-| A calm Request opens no Ticket | todo | |
-| Two mildly unhappy turns in one Conversation escalate | todo | |
+| Triage model call (language, sentiment, urgency, wants_human) | done | `agents/triage.py`; `test_agents.py::test_triage_*`; `test_escalation_graph.py::test_triage_failure_falls_back_to_calm_and_the_run_continues` |
+| Escalation rules P1/P2/P3 in code, with unit tests | done | `policy/escalation.py`; `tests/unit/test_escalation.py` (32 pass: every row, first match, negatives, one Ticket per Conversation) |
+| Tickets table + Handoff note (template line + advisory small-model summary, re-masked) | done | `runs/store.py` (priority, sla_hours, handoff_note added by ALTER TABLE; R5 outage Ticket unchanged); `reporting/handoff.py`, `agents/handoff.py`; `test_run_store.py`, `test_handoff.py` |
+| Student C → P1 Ticket with no key or Aadhaar; P1 skips generation | done | `test_escalation_graph.py::test_student_c_opens_p1_ticket_without_generation_or_secrets` (checks the raw SQLite bytes) |
+| A calm Request opens no Ticket | done | `test_escalation_graph.py::test_calm_request_opens_no_ticket` |
+| Two mildly unhappy turns in one Conversation escalate | done | `test_escalation_graph.py::test_two_mildly_unhappy_turns_escalate_though_one_does_not` |
+| Full suite | done | `PYTHONPATH=src python -m pytest` on top of main (with the repair loop #18): exit 0, 365 passed, 2 skipped. The repair loop's "two failed repairs" Ticket now comes from the R3 rule (P3, 24 h, Handoff note) |
 
 ## 4b. R5 Resilience — Siyahul
 

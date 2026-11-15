@@ -33,6 +33,14 @@ class RunState(TypedDict, total=False):
     repairs_tried: int
     repair_status: str | None  # proposed | rejected | failed
     repair_notes: list[str]
+    ticket_priority: str | None
+    ticket_sla_hours: int | None
+    # Conversation-level (R3): not in RUN_DEFAULTS, so they survive between turns of a thread_id.
+    unhappy_turns: int
+    denials: int
+    failed_repairs: int
+    conversation_ticket_id: str | None
+    conversation_ticket_priority: str | None
 
 
 # Every per-Run field and its fresh value. Ingress returns these so a new Request on the same
@@ -57,4 +65,6 @@ RUN_DEFAULTS: dict[str, Any] = {
     "repairs_tried": 0,
     "repair_status": None,
     "repair_notes": [],
+    "ticket_priority": None,
+    "ticket_sla_hours": None,
 }

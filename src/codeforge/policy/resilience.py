@@ -8,8 +8,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-Tier = Literal["primary", "fallback", "template"]
-_TIER_RANK: dict[str, int] = {"primary": 0, "fallback": 1, "template": 2}
+# Slots of the model chain, best first: primary (Sonnet) → secondary (Groq 120b) → fallback
+# (Haiku) → template. The label is the slot, not the provider, so it means the same everywhere.
+Tier = Literal["primary", "secondary", "fallback", "template"]
+_TIER_RANK: dict[str, int] = {"primary": 0, "secondary": 1, "fallback": 2, "template": 3}
 
 # Only these are worth retrying; bad output goes straight to the fallback.
 _TRANSIENT = frozenset({"rate_limit", "server_unavailable", "timeout"})
@@ -51,7 +53,7 @@ def breaker_next(state: BreakerState, failure: str | None, now: float, threshold
 
 
 def worst_tier(current: str | None, new: str | None) -> str | None:
-    """The more degraded of two tiers (primary < fallback < template)."""
+    """The more degraded of two tiers (primary < secondary < fallback < template)."""
     if current is None:
         return new
     if new is None:
@@ -61,6 +63,6 @@ def worst_tier(current: str | None, new: str | None) -> str | None:
 
 def degrade_verdict(verdict: str, tier: str | None) -> str:
     """A degraded tier never auto-approves: `allow` becomes `needs_approval`. Fail closed."""
-    if verdict == "allow" and tier in ("fallback", "template"):
+    if verdict == "allow" and tier in ("secondary", "fallback", "template"):
         return "needs_approval"
     return verdict

@@ -183,3 +183,11 @@ def test_summary_caller_uses_the_small_model_and_chaos(parts):
     assert build_summary_caller(settings, inner) is inner
     chaotic = build_summary_caller(settings.model_copy(update={"chaos_rate": 0.6}), inner)
     assert isinstance(chaotic, ChaosCaller)
+
+
+def test_summary_caller_without_groq_key_is_unavailable_not_a_crash(parts):
+    # main starts without any model key (templates still answer); the summary is then absent.
+    from codeforge.llm.caller import UnavailableCaller
+    from codeforge.llm.factory import build_summary_caller
+    settings, _ = parts
+    assert isinstance(build_summary_caller(settings, env={}), UnavailableCaller)

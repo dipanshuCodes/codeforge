@@ -7,7 +7,9 @@ def test_loads_identity_from_env():
     s = load_settings({"CODEFORGE_USER_ID": "u-alice", "CODEFORGE_ROLE": "student"})
     assert s.user_id == "u-alice"
     assert s.role == "student"
-    assert s.large_model == "openai/gpt-oss-120b"
+    assert s.primary_model == "claude-sonnet-5-5"
+    assert s.secondary_model == "openai/gpt-oss-120b"
+    assert s.fallback_model == "claude-haiku-5-5"
     assert s.small_model == "openai/gpt-oss-20b"
     assert s.sandbox_timeout_s == 10.0
     assert s.max_output_bytes == 10_240
@@ -137,3 +139,10 @@ def test_bad_chaos_rate_fails_closed(rate):
     with _pytest.raises(ConfigError):
         load_settings({"CODEFORGE_USER_ID": "u", "CODEFORGE_ROLE": "student",
                        "CODEFORGE_CHAOS_RATE": rate})
+
+
+def test_model_names_can_be_overridden_from_env():
+    s = load_settings({"CODEFORGE_USER_ID": "u", "CODEFORGE_ROLE": "student",
+                       "CODEFORGE_PRIMARY_MODEL": "m1", "CODEFORGE_SECONDARY_MODEL": "m2",
+                       "CODEFORGE_FALLBACK_MODEL": "m3"})
+    assert (s.primary_model, s.secondary_model, s.fallback_model) == ("m1", "m2", "m3")

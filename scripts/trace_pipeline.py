@@ -41,9 +41,9 @@ try:
 except ConfigError as exc:
     sys.exit(f"Config error: {exc}")
 print("GROQ_API_KEY present:", bool(os.environ.get("GROQ_API_KEY")))
-print("model:", settings.large_model, "| timeout:", settings.sandbox_timeout_s)
+print("model:", settings.secondary_model, "| timeout:", settings.sandbox_timeout_s)
 
-graph = build_graph(settings, TracingCaller(GroqCaller(settings.large_model)),
+graph = build_graph(settings, TracingCaller(GroqCaller(settings.secondary_model)),
                     RunStore(settings), checkpointer=MemorySaver())
 cfg = {"configurable": {"thread_id": uuid.uuid4().hex}}
 

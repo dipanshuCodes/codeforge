@@ -133,3 +133,39 @@ def test_chaos_rate_zero_never_fails():
     c = ChaosCaller(Scripted(*[OK] * 50), rate=0.0, seed=1)
     for _ in range(50):
         c.call(RouterOutput, "s", "u")
+
+
+def test_three_tiers_are_named_primary_secondary_fallback():
+    a, b, c = Scripted(_err("other")), Scripted(_err("other")), Scripted(OK)
+    rc = ResilientCaller(a, b, c, sleep=lambda _s: None)
+    rc.call(RouterOutput, "s", "u")
+    assert rc.last_tier == "fallback" and (a.calls, b.calls, c.calls) == (1, 1, 1)
+    rc2 = ResilientCaller(Scripted(_err("other")), Scripted(OK), Scripted(), sleep=lambda _s: None)
+    rc2.call(RouterOutput, "s", "u")
+    assert rc2.last_tier == "secondary"
+
+
+def test_breakers_are_per_tier():
+    first = Scripted(*[_err("timeout")] * 20)
+    second = Scripted(*[OK] * 20)
+    rc = ResilientCaller(first, second, Scripted(), max_retries=0, breaker_threshold=2,
+                         breaker_cooldown_s=30, sleep=lambda _s: None, clock=lambda: 0.0)
+    for _ in range(4):
+        rc.call(RouterOutput, "s", "u")
+    # tier 1's breaker is open (skipped after 2 failures); tier 2's stayed closed and answered
+    assert first.calls == 2 and second.calls == 4 and rc.last_tier == "secondary"
+
+
+def test_all_three_failing_raises_unavailable():
+    rc = ResilientCaller(*[Scripted(_err("other")) for _ in range(3)], sleep=lambda _s: None)
+    with pytest.raises(ModelUnavailableError):
+        rc.call(RouterOutput, "s", "u")
+
+
+def test_unavailable_caller_fails_instantly_and_is_not_transient():
+    from codeforge.llm.caller import UnavailableCaller
+    from codeforge.policy.resilience import is_transient
+
+    with pytest.raises(ModelUnavailableError) as info:
+        UnavailableCaller("no key").call(RouterOutput, "s", "u")
+    assert not is_transient(info.value.kind)

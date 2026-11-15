@@ -319,8 +319,9 @@ class Nodes:
         tier = state.get("serving_tier") if state.get("code") is not None else None
         if ticket_id:
             tier = state.get("serving_tier")  # name the tier even when nothing was generated
-        model = {"primary": self.settings.large_model,
-                 "fallback": self.settings.small_model}.get(tier or "")
+        model = {"primary": self.settings.primary_model,
+                 "secondary": self.settings.secondary_model,
+                 "fallback": self.settings.fallback_model}.get(tier or "")
         report = render_report(ReportInput(
             run_id=state["run_id"], request=state["request"], kind=state.get("kind"),
             outcome=outcome, serving_tier=tier, model=model,

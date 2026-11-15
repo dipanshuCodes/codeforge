@@ -22,6 +22,7 @@ class ReportInput(BaseModel):
     exit_code: int | None
     timeout_s: float
     output: str | None
+    run_quota: int | None = None
 
 
 def _headline(r: ReportInput) -> str:
@@ -39,6 +40,7 @@ def _headline(r: ReportInput) -> str:
         "rejected": "REJECTED by the approver",
         "unsupported": "NOT SUPPORTED",
         "cannot_generate": "CANNOT GENERATE NOW",
+        "quota_exceeded": f"QUOTA REACHED: {r.run_quota} Requests per day",
     }[r.outcome]
 
 

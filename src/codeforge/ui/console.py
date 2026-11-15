@@ -13,7 +13,7 @@ from langgraph.types import Command
 APPROVAL_PROMPT = "Type 'approve' to run it; anything else rejects: "
 QUIT = "/quit"
 DEV_WARNING = (
-    "CodeForge L1 — developers only. Masking (R1) and the full sandbox (R2) are not built yet."
+    "CodeForge — developers only. The full sandbox and policy allowlist (R2) are not built yet."
 )
 
 

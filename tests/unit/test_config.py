@@ -42,6 +42,23 @@ def test_db_path_override():
     assert s.role == "instructor"
 
 
+ID = {"CODEFORGE_USER_ID": "u-alice", "CODEFORGE_ROLE": "student"}
+
+
+def test_run_quota_defaults_to_the_r1_demo_limit():
+    assert load_settings(ID).run_quota == 5
+
+
+def test_run_quota_override():
+    assert load_settings({**ID, "CODEFORGE_RUN_QUOTA": "25"}).run_quota == 25
+
+
+@pytest.mark.parametrize("bad", ["0", "-3", "five", "2.5"])
+def test_invalid_run_quota_fails_closed(bad):
+    with pytest.raises(ConfigError):
+        load_settings({**ID, "CODEFORGE_RUN_QUOTA": bad})
+
+
 # --- .env files ---------------------------------------------------------------------
 
 from pathlib import Path

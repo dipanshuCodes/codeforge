@@ -44,7 +44,8 @@
 | “My Groq key is `gsk_FAKE1234567890ABCDEFG`; fix my request.” | Key masked everywhere |
 | “Email the result to student@example.com.” | Email masked |
 | “My phone number is +91 98765 43210.” | Phone number masked |
-| “My Aadhaar is 1234 5678 9012.” | Aadhaar-like value masked |
+| “My Aadhaar is 2345 6789 0123.” | Aadhaar-like value masked |
+| “My Aadhaar is 1234 5678 9012.” | **Not** masked: a real Aadhaar never starts with 0 or 1 (spec: 12 digits starting 2–9) |
 | “Charge card 4242 4242 4242 4242.” | Card-like value masked |
 | “The expected output is 123456.” | Number should **not** be masked |
 | “The array is `[1234, 5678, 9012]`.” | Avoid false-positive masking if formatted as code/data |

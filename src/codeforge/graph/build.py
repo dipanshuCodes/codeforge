@@ -60,7 +60,7 @@ def build_graph(
         g.add_node(name, getattr(nodes, name))
 
     g.add_edge(START, "ingress")
-    g.add_edge("ingress", "triage")
+    g.add_conditional_edges("ingress", _continue_or_report("triage"), ["triage", "report"])
     g.add_edge("triage", "escalation")
     g.add_edge("escalation", "router")
     g.add_conditional_edges("router", _continue_or_report("requirements"), ["requirements", "report"])

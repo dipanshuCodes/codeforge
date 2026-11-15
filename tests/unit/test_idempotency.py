@@ -38,9 +38,9 @@ def _responses(over=None):
 def make(tmp_path):
     spy = Spy()
 
-    def _make(user="u-alice", responses=None):
+    def _make(user="u-alice", responses=None, **extra):
         settings = Settings(user_id=user, role="student", db_path=str(tmp_path / "runs.db"),
-                            sandbox_timeout_s=5, run_quota=50)
+                            sandbox_timeout_s=5, run_quota=50, **extra)
         caller = FakeCaller(responses or _responses())
         store = RunStore(settings)
         graph = build_graph(settings, caller, store, run_tests=spy, checkpointer=MemorySaver())
@@ -67,6 +67,17 @@ def test_same_request_twice_runs_once(make):
     assert second["duplicate_of"] == first["run_id"] and second["run_id"] != first["run_id"]
     assert f"Duplicate Request: same as Run {first['run_id'][:6]}" in second["report"]
     assert store.get(second["run_id"]).duplicate_of == first["run_id"]
+
+
+def test_duplicate_lookup_can_be_disabled(make):
+    _make, spy = make
+    graph, caller, _ = _make(duplicate_request_lookup=False)
+    first = _run(graph, "add two numbers", "a")
+    calls = len(caller.calls)
+    second = _run(graph, "add two numbers", "b")
+    assert second.get("duplicate_of") is None and second["run_id"] != first["run_id"]
+    assert len(caller.calls) > calls  # generated again; the Execution key still reuses the result
+    assert second["outcome"] == "tests_passed"
 
 
 def test_duplicate_is_matched_on_masked_text(make):

@@ -87,8 +87,7 @@ def test_dynamic_execution_denied_even_without_a_call():
 
 
 @pytest.mark.parametrize("source", [
-    "x = ().__class__.__bases__[0].__subclasses__()\n",
-    "g = f.__globals__\n",
+    # Dunder attribute access (e.g. `.__class__`, `.__globals__`) is no longer denied: docs/adr/0001.
     "b = __builtins__\n",
     "getattr(__import__('os'), 'system')('ls')\n",
     "getattr(x, '__class__')\n",

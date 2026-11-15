@@ -82,10 +82,15 @@ class AnthropicCaller:
     def __init__(self, model: str, timeout_s: float = 60.0) -> None:
         from langchain_anthropic import ChatAnthropic  # lazy: tests need no key
 
-        self._llm = ChatAnthropic(model=model, temperature=0, max_retries=0, timeout=timeout_s)
+        # No `temperature`: Claude 5.5 models reject non-default values (400), which would
+        # silently drop every Run to the template tier.
+        self._llm = ChatAnthropic(model=model, max_retries=0, timeout=timeout_s)
 
     def call(self, schema: type[T], system: str, user: str) -> T:
-        structured = self._llm.with_structured_output(schema, include_raw=True)
+        # json_schema, not the default forced tool call: Sonnet 5.5 doesn't support forcing a tool.
+        structured = self._llm.with_structured_output(
+            schema, include_raw=True, method="json_schema"
+        )
         try:
             result: dict[str, Any] = structured.invoke([("system", system), ("user", user)])
         except (ValidationError, ValueError) as exc:

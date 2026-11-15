@@ -91,3 +91,12 @@ def test_identity_claims_in_the_message_change_nothing(tmp_path, claim):
     bob = RunStore(settings.model_copy(update={"user_id": "u-bob"}))
     assert bob.get(refused["run_id"]) is None
     assert store.get(refused["run_id"]) is not None
+
+
+def test_user_b_cannot_read_user_a_run_and_missing_looks_the_same(tmp_path):
+    graph, _, _, settings = _setup(tmp_path)
+    run_id = _run(graph, "add two numbers")["run_id"]
+    bob = RunStore(settings.model_copy(update={"user_id": "u-bob"}))
+    assert bob.get(run_id) is None
+    assert bob.get("no-such-run") is None
+    assert bob.list_mine() == []

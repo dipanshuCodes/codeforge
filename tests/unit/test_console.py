@@ -67,20 +67,18 @@ def test_console_blank_request_is_skipped(tmp_path):
     assert "You (masked)" not in out
 
 
-def test_main_without_groq_key_exits_2(monkeypatch, tmp_path, capsys):
-    import pytest
-
-    from codeforge.ui.console import main
+def test_main_without_any_model_key_warns_and_still_starts(monkeypatch, tmp_path, capsys):
+    from codeforge.ui import console
 
     monkeypatch.setenv("CODEFORGE_USER_ID", "u-dev")
     monkeypatch.setenv("CODEFORGE_ROLE", "student")
     monkeypatch.setenv("CODEFORGE_DB_PATH", str(tmp_path / "r.db"))
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.chdir(tmp_path)  # no .env.local / .env here
-    with pytest.raises(SystemExit) as exc:
-        main()
-    assert exc.value.code == 2
-    assert "GROQ_API_KEY" in capsys.readouterr().err
+    monkeypatch.setattr(console, "run_console", lambda *a, **k: None)
+    console.main()  # must not exit: templates can still answer
+    assert "only the template tier" in capsys.readouterr().err
 
 
 def test_approval_display_escapes_control_characters(tmp_path):

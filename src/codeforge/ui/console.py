@@ -121,9 +121,9 @@ def main(argv: list[str] | None = None) -> None:
         print(f"Draft Golden case written: {path}\nWrite its expected outcome, then move it "
               "into evals/golden_set.json (red), fix, and see it pass (green).")
         return
-    if not os.environ.get("GROQ_API_KEY"):
-        print("Config error: GROQ_API_KEY is not set", file=sys.stderr)
-        sys.exit(2)
+    if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("GROQ_API_KEY")):
+        # Not fatal: tiers without a key are skipped; with none, only Templates can answer.
+        print("Warning: no model API key set; only the template tier can answer.", file=sys.stderr)
     store = RunStore(settings)
     graph = build_graph(settings, build_caller(settings), store, checkpointer=MemorySaver())
     print(DEV_WARNING)

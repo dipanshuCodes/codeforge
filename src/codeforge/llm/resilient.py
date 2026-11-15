@@ -24,11 +24,15 @@ T = TypeVar("T", bound=BaseModel)
 
 
 class ResilientCaller:
+    """Ordered chain of callers: first is `primary`, last is `fallback`, any between are `secondary`.
+
+    Every tier but the last gets jittered retries on transient errors and its own breaker, so one
+    provider being down never blocks the others. The last tier gets a single try.
+    """
+
     def __init__(
         self,
-        primary: StructuredCaller,
-        fallback: StructuredCaller,
-        *,
+        *callers: StructuredCaller,
         max_retries: int = 2,
         breaker_threshold: int = 3,
         breaker_cooldown_s: float = 30.0,
@@ -36,15 +40,18 @@ class ResilientCaller:
         rng: random.Random | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
-        self._primary = primary
-        self._fallback = fallback
+        if len(callers) < 2:
+            raise ValueError("ResilientCaller needs at least two callers")
+        self._callers = list(callers)
+        n = len(callers)
+        self._names = ["primary"] + ["secondary"] * (n - 2) + ["fallback"]
         self._max_retries = max_retries
         self._threshold = breaker_threshold
         self._cooldown = breaker_cooldown_s
         self._sleep = sleep
         self._rng = rng or random.Random()
         self._clock = clock
-        self._breaker = BreakerState()
+        self._breakers = [BreakerState() for _ in callers]
         self.last_tier: str | None = None  # tier that answered the most recent call
 
     @staticmethod
@@ -53,35 +60,39 @@ class ResilientCaller:
             return "bad_output"
         return getattr(exc, "kind", "other")
 
-    def _try_primary(self, schema: type[T], system: str, user: str) -> T:
+    def _try(self, i: int, schema: type[T], system: str, user: str, retries: int) -> T:
         attempt = 0
         while True:
             try:
-                result = self._primary.call(schema, system, user)
+                result = self._callers[i].call(schema, system, user)
             except ModelCallError as exc:
                 kind = self._kind(exc)
-                self._breaker = breaker_next(self._breaker, kind, self._clock(), self._threshold)
-                if not is_transient(kind) or attempt >= self._max_retries:
+                self._breakers[i] = breaker_next(self._breakers[i], kind, self._clock(),
+                                                 self._threshold)
+                if not is_transient(kind) or attempt >= retries:
                     raise
-                if not breaker_allows(self._breaker, self._clock(), self._cooldown):
+                if not breaker_allows(self._breakers[i], self._clock(), self._cooldown):
                     raise  # breaker just opened: stop retrying a failing provider
                 self._sleep(backoff_delay(attempt, self._rng.random()))
                 attempt += 1
             else:
-                self._breaker = breaker_next(self._breaker, None, self._clock(), self._threshold)
+                self._breakers[i] = breaker_next(self._breakers[i], None, self._clock(),
+                                                 self._threshold)
                 return result
 
     def call(self, schema: type[T], system: str, user: str) -> T:
-        if breaker_allows(self._breaker, self._clock(), self._cooldown):
+        last_exc: ModelCallError | None = None
+        last = len(self._callers) - 1
+        for i in range(len(self._callers)):
+            if not breaker_allows(self._breakers[i], self._clock(), self._cooldown):
+                continue
             try:
-                result = self._try_primary(schema, system, user)
-                self.last_tier = "primary"
-                return result
-            except ModelCallError:
-                pass  # fall through to the fallback
-        try:
-            result = self._fallback.call(schema, system, user)
-        except ModelCallError as exc:
-            raise ModelUnavailableError("all serving tiers failed", kind=self._kind(exc)) from exc
-        self.last_tier = "fallback"
-        return result
+                result = self._try(i, schema, system, user, 0 if i == last else self._max_retries)
+            except ModelCallError as exc:
+                last_exc = exc
+                continue
+            self.last_tier = self._names[i]
+            return result
+        raise ModelUnavailableError(
+            "all serving tiers failed", kind=self._kind(last_exc) if last_exc else "other"
+        ) from last_exc

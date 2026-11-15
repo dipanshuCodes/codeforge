@@ -166,6 +166,7 @@ offline unit tests only; nothing here is checked live against Groq yet.
 | 3d | Repair loop (after R1/R2/R6 green) | Dipanshu | in progress | issue [#7](https://github.com/dipanshuCodes/codeforge/issues/7) |
 | 4a | R3 Escalation and handoff | Siyahul | todo | issue [#8](https://github.com/dipanshuCodes/codeforge/issues/8) |
 | 4b | R5 Resilience | Siyahul | done (code + unit tests; live Groq check open) | issue [#9](https://github.com/dipanshuCodes/codeforge/issues/9) |
+| 4b+ | Model chain Sonnet → Groq 120b → Haiku → templates | Dipanshu | done offline (327 tests pass); live key check open | [plan](2026-11-15-08-anthropic-primary-model.md) |
 | 4c | Gradio UI (drop if not working by **1:30 PM IST**) | Neha | todo | issue [#10](https://github.com/dipanshuCodes/codeforge/issues/10) |
 | 4d | R4 Cost and latency (only if time remains) | — | todo | issue [#11](https://github.com/dipanshuCodes/codeforge/issues/11) |
 | 5 | Deliverables and presentation | Neha + all | todo | issue [#12](https://github.com/dipanshuCodes/codeforge/issues/12) |

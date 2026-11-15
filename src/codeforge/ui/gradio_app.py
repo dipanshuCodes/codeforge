@@ -1,6 +1,5 @@
 
 from pathlib import Path
-import os
 import uuid
 
 import gradio as gr
@@ -9,7 +8,7 @@ from langgraph.types import Command
 
 from codeforge.config import load_env_files, load_settings
 from codeforge.graph.build import build_graph
-from codeforge.llm.caller import GroqCaller
+from codeforge.llm.factory import build_caller
 from codeforge.runs.store import RunStore
 
 
@@ -17,13 +16,10 @@ from codeforge.runs.store import RunStore
 load_env_files(Path.cwd())
 settings = load_settings()
 
-if not os.environ.get("GROQ_API_KEY"):
-    raise RuntimeError("GROQ_API_KEY is missing from .env.local")
-
 # Build the CodeForge graph
 graph = build_graph(
     settings,
-    GroqCaller(settings.large_model),
+    build_caller(settings),
     RunStore(settings),
     checkpointer=MemorySaver(),
 )

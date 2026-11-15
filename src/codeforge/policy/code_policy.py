@@ -1,7 +1,10 @@
-"""Code policy. Pure functions: parse with `ast` only, never compile or run anything.
+"""Code policy (security invariants 4, 5). Pure: parse with `ast` only, never run anything.
 
-L1 stub: parse failure → deny; everything else → needs_approval, so nothing runs without a
-human until the R2 allowlist replaces `_L1_STUB_DECISION`.
+An allowlist, applied to both the generated code and the generated tests:
+- allow: pure standard-library modules, pytest, and the generated `solution` module;
+- needs_approval: file access (`open`, `pathlib`, `io`) and network access;
+- deny: everything else, including dangerous modules, dynamic execution, dunder access,
+  reflection, parse failures and anything not listed.
 """
 
 from __future__ import annotations
@@ -21,10 +24,23 @@ class PolicyDecision(BaseModel):
     reasons: list[str]
 
 
-_L1_STUB_DECISION = PolicyDecision(
-    verdict="needs_approval",
-    reasons=["L1 policy stub: all code needs approval until the R2 allowlist exists"],
-)
+MAX_NESTING = 100  # far deeper than any small generated function; stops pathological input
+
+ALLOWED_MODULES: frozenset[str] = frozenset({
+    "__future__", "abc", "array", "bisect", "calendar", "cmath", "collections", "copy",
+    "dataclasses", "datetime", "decimal", "enum", "fractions", "functools", "heapq",
+    "itertools", "json", "math", "numbers", "operator", "random", "re", "statistics",
+    "string", "textwrap", "typing", "unicodedata",
+    "pytest", "solution",  # the test runner and the generated module under test
+})
+FILE_MODULES: frozenset[str] = frozenset({"pathlib", "io"})
+NETWORK_MODULES: frozenset[str] = frozenset({"socket", "urllib", "http", "requests"})
+# Builtins that run strings as code or reach interpreter internals.
+DENIED_NAMES: frozenset[str] = frozenset({
+    "eval", "exec", "compile", "__import__", "globals", "locals", "vars", "breakpoint",
+    "__builtins__",
+})
+REFLECTION_CALLS: frozenset[str] = frozenset({"getattr", "setattr", "delattr"})
 
 
 def _parse(source: str) -> ast.Module | None:
@@ -47,9 +63,71 @@ def evaluate_code_policy(source: str) -> PolicyDecision:
         return _deny("source is not valid UTF-8 text")
     if size > MAX_SOURCE_BYTES:
         return _deny(f"source too large ({size} bytes > {MAX_SOURCE_BYTES})")
-    if _parse(source) is None:
+    tree = _parse(source)
+    if tree is None:
         return _deny("could not parse the source")
-    return _L1_STUB_DECISION.model_copy(deep=True)
+    if _depth(tree) > MAX_NESTING:
+        return _deny(f"source nested deeper than {MAX_NESTING} levels")
+    findings = [f for node in ast.walk(tree) for f in _check(node)]
+    if not findings:
+        return PolicyDecision(verdict="allow", reasons=[])
+    return strictest(*(PolicyDecision(verdict=v, reasons=[r]) for v, r in findings))
+
+
+def _depth(tree: ast.AST) -> int:
+    """Deepest node nesting, computed without recursion."""
+    deepest, stack = 0, [(tree, 1)]
+    while stack:
+        node, depth = stack.pop()
+        deepest = max(deepest, depth)
+        if deepest > MAX_NESTING:
+            break
+        stack.extend((child, depth + 1) for child in ast.iter_child_nodes(node))
+    return deepest
+
+
+def _is_dunder(name: str) -> bool:
+    return name.startswith("__") and name.endswith("__") and len(name) > 4
+
+
+def _module_verdict(module: str) -> tuple[Verdict, str]:
+    root = module.split(".")[0]
+    if root in ALLOWED_MODULES:
+        return "allow", ""
+    if root in FILE_MODULES:
+        return "needs_approval", f"import {module}: file access"
+    if root in NETWORK_MODULES:
+        return "needs_approval", f"import {module}: network access"
+    return "deny", f"import {module}: module not on the allowlist"
+
+
+def _check(node: ast.AST) -> list[tuple[Verdict, str]]:
+    """Findings for one node; an empty list means nothing to report."""
+    found: list[tuple[Verdict, str]] = []
+    if isinstance(node, ast.Import):
+        found += [_module_verdict(alias.name) for alias in node.names]
+    elif isinstance(node, ast.ImportFrom):
+        if node.level or not node.module:
+            found.append(("deny", "relative import"))
+        else:
+            found.append(_module_verdict(node.module))
+    elif isinstance(node, ast.Name):
+        if node.id in DENIED_NAMES:
+            found.append(("deny", f"use of {node.id}"))
+        elif node.id == "open":
+            found.append(("needs_approval", "open(): file access"))
+        elif _is_dunder(node.id) and node.id != "__name__":
+            found.append(("deny", f"dunder name {node.id}"))
+    elif isinstance(node, ast.Attribute) and _is_dunder(node.attr):
+        found.append(("deny", f"dunder attribute .{node.attr}"))
+    elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name) \
+            and node.func.id in REFLECTION_CALLS:
+        name = node.args[1] if len(node.args) > 1 else None
+        if not (isinstance(name, ast.Constant) and isinstance(name.value, str)):
+            found.append(("deny", f"{node.func.id}() with a computed attribute name"))
+        elif _is_dunder(name.value):
+            found.append(("deny", f"{node.func.id}() on dunder attribute {name.value}"))
+    return [(v, r) for v, r in found if v != "allow"]
 
 
 def strictest(*decisions: PolicyDecision) -> PolicyDecision:

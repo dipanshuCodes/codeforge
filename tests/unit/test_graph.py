@@ -65,6 +65,7 @@ def test_palindrome_happy_path(env):
     first = _submit(g)
     payload = first["__interrupt__"][0].value
     assert payload["verdict"] == "needs_approval"
+    assert payload["serving_tier"] == "primary"
     assert payload["code"] == CODE and payload["tests"] == TESTS
     assert spy.calls == 0
     final = g.invoke(Command(resume="approve"), CFG)

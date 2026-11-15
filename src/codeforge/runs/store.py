@@ -14,20 +14,30 @@ from datetime import datetime, timezone
 from pydantic import BaseModel
 
 from codeforge.config import Settings
-from codeforge.reporting.outcome import Outcome
+from codeforge.reporting.outcome import FINAL_OUTCOMES, Outcome
 
 _FIELDS = (
     "run_id", "conversation_id", "created_at", "request", "kind", "outcome", "verdict",
     "reasons", "approved", "code", "tests", "exit_code", "timed_out", "output",
-    "serving_tier", "report",
+    "serving_tier", "report", "request_key", "duplicate_of",
 )
 
+_INT_FIELDS = ("approved", "exit_code", "timed_out")
 _SCHEMA = f"""
 CREATE TABLE IF NOT EXISTS runs (
     run_id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
-    {", ".join(f"{f} TEXT" if f not in ("approved", "exit_code", "timed_out") else f"{f} INTEGER"
-               for f in _FIELDS[1:])}
+    {", ".join(f"{f} {'INTEGER' if f in _INT_FIELDS else 'TEXT'}" for f in _FIELDS[1:])}
+)
+"""
+_EXECUTIONS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS executions (
+    execution_key TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    exit_code INTEGER,
+    timed_out INTEGER NOT NULL,
+    output TEXT NOT NULL,
+    PRIMARY KEY (execution_key, user_id)
 )
 """
 
@@ -75,6 +85,8 @@ class RunRecord(BaseModel):
     output: str | None = None
     serving_tier: str | None = None
     report: str | None = None
+    request_key: str | None = None
+    duplicate_of: str | None = None
 
 
 class RunStore:
@@ -84,6 +96,13 @@ class RunStore:
         with closing(self._connect()) as conn, conn:
             conn.execute(_SCHEMA)
             conn.execute(_TICKETS_SCHEMA)
+            conn.execute(_EXECUTIONS_SCHEMA)
+            # Databases made before a column existed get it added (no data is changed).
+            have = {row["name"] for row in conn.execute("PRAGMA table_info(runs)")}
+            for f in _FIELDS:
+                if f not in have:
+                    kind = "INTEGER" if f in _INT_FIELDS else "TEXT"
+                    conn.execute(f"ALTER TABLE runs ADD COLUMN {f} {kind}")
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self._db_path)
@@ -142,6 +161,36 @@ class RunStore:
                 " WHERE user_id = ? ORDER BY created_at", (self._user_id,)
             ).fetchall()
         return [TicketRecord(**dict(r)) for r in rows]
+
+    def find_final_run(self, request_key: str) -> RunRecord | None:
+        """The config User's newest original Run with this Request key and a Final outcome."""
+        marks = ", ".join("?" for _ in FINAL_OUTCOMES)
+        with closing(self._connect()) as conn:
+            row = conn.execute(
+                f"SELECT * FROM runs WHERE user_id = ? AND request_key = ? AND duplicate_of IS NULL "
+                f"AND outcome IN ({marks}) ORDER BY created_at DESC LIMIT 1",
+                (self._user_id, request_key, *sorted(FINAL_OUTCOMES)),
+            ).fetchone()
+        return _to_record(row) if row else None
+
+    def get_execution(self, execution_key: str) -> dict | None:
+        with closing(self._connect()) as conn:
+            row = conn.execute(
+                "SELECT exit_code, timed_out, output FROM executions "
+                "WHERE execution_key = ? AND user_id = ?", (execution_key, self._user_id),
+            ).fetchone()
+        if row is None:
+            return None
+        return {"exit_code": row["exit_code"], "timed_out": bool(row["timed_out"]),
+                "output": row["output"]}
+
+    def save_execution(self, execution_key: str, result: dict) -> None:
+        with closing(self._connect()) as conn, conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO executions VALUES (?, ?, ?, ?, ?)",
+                (execution_key, self._user_id, result["exit_code"], int(result["timed_out"]),
+                 result["output"]),
+            )
 
     def list_mine(self) -> list[RunRecord]:
         with closing(self._connect()) as conn:

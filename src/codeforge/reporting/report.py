@@ -24,6 +24,7 @@ class ReportInput(BaseModel):
     output: str | None
     ticket_id: str | None = None
     run_quota: int | None = None
+    execution_reused: bool = False
 
 
 def _headline(r: ReportInput) -> str:
@@ -72,6 +73,8 @@ def render_report(r: ReportInput) -> str:
         summary = pytest_summary_line(r.output or "")
         result = f"pytest exit {r.exit_code}"
         lines.append(f'Result:       {result} · "{summary}"' if summary else f"Result:       {result}")
+        if r.execution_reused:
+            lines.append("              Execution reused: the same code and tests ran before")
     if r.code:
         lines += ["── code ──", r.code.rstrip()]
     if r.tests:
